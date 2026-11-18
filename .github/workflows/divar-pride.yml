@@ -1,0 +1,42 @@
+name: Divar Pride Monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: divar-pride-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: بررسی آگهی‌های جدید
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python divar_pride_monitor.py
+
+      - name: ذخیره فهرست آگهی‌های دیده‌شده
+        run: |
+          if [ -n "$(git status --porcelain seen.json)" ]; then
+            git config user.name "divar-monitor"
+            git config user.email "divar-monitor@users.noreply.github.com"
+            git add seen.json
+            git commit -m "chore: update seen divar ads"
+            git push
+          else
+            echo "تغییری در seen.json نبود"
+          fi
