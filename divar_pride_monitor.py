@@ -348,7 +348,8 @@ def message(ad):
 
     if ad["where"]:
         lines.append(f"📍 {esc(ad['where'])}")
-    lines.append(ad["url"])
+    lines.append(f"🔗 <a href=\"{esc(ad['url'])}\">مشاهده آگهی در دیوار</a>")
+    lines.append(esc(ad["url"]))
     return "\n".join(lines)
 
 
