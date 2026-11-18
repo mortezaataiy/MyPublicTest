@@ -5,12 +5,13 @@
 
 فیلترها (بالای فایل یا با متغیر محیطی قابل تغییرند):
   • همه مدل‌های پراید سواری (وانت کنار گذاشته می‌شود)
-  • قیمت ۳۵۰ تا ۴۵۰ میلیون تومان
-  • مدل ۱۳۸۵ و بالاتر
-  • کارکرد ۱۰۰٬۰۰۰ تا ۳۵۰٬۰۰۰ کیلومتر
+  • قیمت ۳۳۰ تا ۵۲۰ میلیون تومان
+  • مدل ۱۳۸۰ و بالاتر
+  • کارکرد ۸۰٬۰۰۰ تا ۴۸۰٬۰۰۰ کیلومتر
   • شاسی سالم / سالم و پلمپ (شاسی جلو و عقب هم جدا بررسی می‌شود)
-  • بدنه بدون‌رنگ یا دوررنگ (سقف‌رنگ و تمام‌رنگ رد می‌شود)
+  • بدنه بدون‌رنگ، دوررنگ، خط‌وخش جزیی یا رنگ‌شدگی حداکثر ۲ ناحیه
   • موتور سالم، بدون تصادف و بدون نیاز به تعمیر
+  • هیچ اشاره‌ای به اقساط، قسط، چک، سود، درصد، شرایط، پیش‌پرداخت، لیزینگ و وام
 
 اجرا:
     python3 divar_pride_monitor.py            # بررسی و ارسال آگهی‌های جدید
@@ -37,17 +38,48 @@ CITY_ID = os.environ.get("DIVAR_CITY_ID", "3")  # مشهد
 CATEGORY = os.environ.get("DIVAR_CATEGORY", "light")  # سواری
 BRAND = os.environ.get("DIVAR_BRAND", "Pride")
 
-PRICE_MIN = int(os.environ.get("PRICE_MIN", 350_000_000))
-PRICE_MAX = int(os.environ.get("PRICE_MAX", 450_000_000))
-MILEAGE_MIN = int(os.environ.get("MILEAGE_MIN", 100_000))
-MILEAGE_MAX = int(os.environ.get("MILEAGE_MAX", 350_000))
-YEAR_MIN = int(os.environ.get("YEAR_MIN", 1385))
+# بازه‌ها بر پایه اندازه‌گیری روی دیوار تنظیم شده‌اند تا روزی حدود ۱۰ آگهی برسد
+PRICE_MIN = int(os.environ.get("PRICE_MIN", 330_000_000))
+PRICE_MAX = int(os.environ.get("PRICE_MAX", 520_000_000))
+MILEAGE_MIN = int(os.environ.get("MILEAGE_MIN", 80_000))
+MILEAGE_MAX = int(os.environ.get("MILEAGE_MAX", 480_000))
+YEAR_MIN = int(os.environ.get("YEAR_MIN", 1380))
 
-BAD_WORDS = [
-    "تصادف", "تصادفی", "ضربه", "شاسی جوش", "جوش", "تعویض شاسی", "شاسی تعویض",
-    "سقف رنگ", "تمام رنگ", "کامل رنگ", "رنگ کامل", "نیاز به تعمیر", "تعمیر موتور",
-    "موتور تعمیر", "داغی", "سوخته", "اوراق", "وانت", "بدون موتور", "کچل",
+# واژه‌هایی که هر طور در متن بیایند آگهی رد می‌شود (اقساط، شرایط، درصد و ...)
+W = r"(?<![\u0600-\u06FF])"  # مرز کلمه فارسی
+E = r"(?![\u0600-\u06FF])"
+HARD_BAD = [
+    ("اقساط", W + r"(?:اقساط|قسط)(?:ی|ه)?" + E),
+    ("لیزینگ", W + r"لیزینگ" + E),
+    ("تسهیلات/وام", W + r"(?:تسهیلات|وام)" + E),
+    ("اجاره به شرط", r"اجاره\s*به\s*شرط"),
+    ("درصد در معامله", r"(?:درصد|٪|%)\s*(?:سود|پیش|قسط|ماهیانه|کارمزد)|(?:سود|پیش|قسط)\s*(?:درصد|٪|%)"),
+    ("سود/بهره", W + r"(?:سود|بهره)" + E),
+    ("پول پیش", r"پول\s*پیش|پیش\s*پول"),
+    ("شرایط", r"شرایط"),
+    ("چک/سفته", W + r"(?:چک|چک‌ها|سفته|ضامن)" + E),
+    ("پیش‌پرداخت", r"پیش\s*[-‌]?\s*پرداخت|پیش‌پرداخت|پیش\s*قسط"),
+    ("قسط ماهانه", r"قسط\s*ماهانه|ماهی\s*(?:چند|یک)?\s*قسط"),
+    ("وانت", W + r"وانت" + E),
+    ("اوراق", W + r"اوراق" + E),
+    ("بدون موتور", r"بدون\s*موتور"),
 ]
+
+# آسیب‌ها؛ اگر با «بدون/ندارد/نخورده» همراه باشند (مثل «شاسی ضربه نخورده») رد نمی‌شود
+NEGATABLE_BAD = [
+    ("تصادف", r"تصادف"),
+    ("سقف رنگ", r"سقف\s*[-‌]?\s*رنگ(?:ی|ه)?" + E),
+    ("ضربه", r"ضربه"),
+    ("جوش", r"جوش"),
+    ("تمام رنگ", r"(?:تمام|کامل)\s*[-‌]?\s*رنگ|رنگ\s*(?:کامل|تمام)"),
+    ("تعویض قطعه", r"(?:تعویض|عوض)\s*(?:شده)?\s*(?:شاسی|موتور|گیربکس|سینی)|(?:شاسی|موتور|گیربکس|سینی)\s*(?:تعویض|عوض)"),
+    ("نیاز به تعمیر", r"نیاز\s*به\s*تعمیر"),
+    ("تعمیر موتور", r"(?:تعمیر|بازسازی|تعمیرات)\s*(?:موتور|گیربکس|شاسی)"),
+    ("داغی", r"داغی|جوش آوردن"),
+    ("سوخته", r"(?<!آفتاب )(?<!افتاب )سوخته"),
+    ("کچل", r"کچل"),
+]
+NEGATIONS = ("بدون", "ندارد", "نداشته", "نداریم", "نداره", "نخورده", "نخورد", "نشده", "نیست", "نزده")
 
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seen.json")
 MAX_SEEN = 4000
@@ -238,15 +270,61 @@ def mileage_of(specs, card_value):
     return n if n is not None else to_num(card_value)
 
 
+def bad_reason(text):
+    """واژه ممنوعه‌ای که در متن آمده، وگرنه None."""
+    t = text.translate(FA_DIGITS)
+    for word, pattern in HARD_BAD:
+        if re.search(pattern, t):
+            return f"واژه «{word}» در آگهی"
+    for word, pattern in NEGATABLE_BAD:
+        for match in re.finditer(pattern, t):
+            window = t[max(0, match.start() - 20): match.start()]
+            if any(neg in window for neg in NEGATIONS):
+                continue
+            return f"واژه «{word}» در آگهی"
+    return None
+
+
+def body_ok(body):
+    """بدنه قابل قبول: بدون‌رنگ، دوررنگ، خط‌وخش جزیی، رنگ‌شدگی حداکثر ۲ ناحیه."""
+    b = str(body or "").replace("\u200c", " ").strip()
+    if not b:
+        return False
+    if any(w in b for w in ("تصادف", "تمام رنگ", "کامل رنگ", "سقف رنگ")):
+        return False
+    if "رنگ شدگی" in b:
+        n = to_num(b)
+        return n is None or n <= 2
+    return any(
+        w in b
+        for w in (
+            "بدون رنگ", "دور رنگ", "بی خط", "خط و خش", "سالم", "صافکاری بی رنگ",
+            "صافکاری بدون رنگ", "بی رنگ",
+        )
+    )
+
+
+def chassis_ok(chassis):
+    """همه شاسی‌های آمده باید سالم باشند (بدون رنگ/تعویض/ضربه/جوش/کج/بریده)."""
+    if not chassis:
+        return False
+    for value in chassis.values():
+        if "سالم" not in value:
+            return False
+        if any(w in value for w in ("رنگ", "تعویض", "ضربه", "جوش", "کج", "بریده", "ترک")):
+            return False
+    return True
+
+
 def check(ad):
     """None اگر با فیلترها جور باشد، وگرنه دلیل رد."""
     detail = ad["detail"]
     specs, assess = detail["specs"], detail["assessment"]
     text = " ".join([ad["title"], detail["title"], detail["description"]]).translate(FA_DIGITS)
 
-    for word in BAD_WORDS:
-        if word in text:
-            return f"واژه «{word}» در آگهی"
+    bad = bad_reason(text)
+    if bad:
+        return bad
 
     price = to_num(ad["price_card"]) or to_num(specs.get("قیمت پایه", ""))
     if price is None:
@@ -273,24 +351,16 @@ def check(ad):
     chassis = {k: v for k, v in assess.items() if "شاسی" in k}
     if not chassis:
         return "وضعیت شاسی در آگهی نیامده"
-    for label, value in chassis.items():
-        if "سالم" not in value or any(
-            w in value for w in ("رنگ", "تعویض", "ضربه", "جوش", "کج", "بریده")
-        ):
-            return f"{label}: {value}"
+    if not chassis_ok(chassis):
+        label, value = next(
+            (k, v) for k, v in chassis.items() if not chassis_ok({k: v})
+        )
+        return f"{label}: {value}"
 
     body = assess.get("بدنه", "")
     if not body:
         return "وضعیت بدنه در آگهی نیامده"
-    ok_body = (
-        "بدون رنگ" in body
-        or "دوررنگ" in body
-        or "دور رنگ" in body
-        or "بی‌خط" in body
-        or "بی خط" in body
-        or ("سالم" in body and "رنگ" not in body)
-    )
-    if not ok_body:
+    if not body_ok(body):
         return f"بدنه: {body}"
 
     return None

@@ -27,6 +27,12 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # برای سخت‌گیرتر یا بازتر کردن فیلترها فقط همین عددها را تغییر دهید
+          PRICE_MIN: "330000000"
+          PRICE_MAX: "520000000"
+          MILEAGE_MIN: "80000"
+          MILEAGE_MAX: "480000"
+          YEAR_MIN: "1380"
         run: python divar_pride_monitor.py
 
       - name: ذخیره فهرست آگهی‌های دیده‌شده
