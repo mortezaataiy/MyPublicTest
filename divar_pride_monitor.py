@@ -278,7 +278,7 @@ def bad_reason(text):
             return f"واژه «{word}» در آگهی"
     for word, pattern in NEGATABLE_BAD:
         for match in re.finditer(pattern, t):
-            window = t[max(0, match.start() - 20): match.start()]
+            window = t[max(0, match.start() - 20): match.end() + 20]
             if any(neg in window for neg in NEGATIONS):
                 continue
             return f"واژه «{word}» در آگهی"
