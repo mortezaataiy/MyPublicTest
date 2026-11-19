@@ -5,9 +5,9 @@
 
 فیلترها (بالای فایل یا با متغیر محیطی قابل تغییرند):
   • همه مدل‌های پراید سواری (وانت کنار گذاشته می‌شود)
-  • قیمت ۳۳۰ تا ۵۲۰ میلیون تومان
-  • مدل ۱۳۸۳ و بالاتر
-  • کارکرد ۸۰٬۰۰۰ تا ۴۸۰٬۰۰۰ کیلومتر
+  • قیمت ۳۰۰ تا ۵۶۰ میلیون تومان
+  • مدل ۱۳۸۵ و بالاتر
+  • کارکرد ۶۰٬۰۰۰ تا ۵۰۰٬۰۰۰ کیلومتر
   • شاسی سالم / سالم و پلمپ (شاسی جلو و عقب هم جدا بررسی می‌شود)
   • بدنه بدون‌رنگ، دوررنگ، خط‌وخش جزیی یا رنگ‌شدگی حداکثر ۲ ناحیه
   • موتور سالم، بدون تصادف و بدون نیاز به تعمیر
@@ -47,15 +47,16 @@ CITY_ID = os.environ.get("DIVAR_CITY_ID", "3")  # مشهد
 CATEGORY = os.environ.get("DIVAR_CATEGORY", "light")  # سواری
 BRAND = os.environ.get("DIVAR_BRAND", "Pride")
 
-# بازه‌ها بر پایه اندازه‌گیری روی دیوار تنظیم شده‌اند تا روزی حدود ۱۰ آگهی برسد
-PRICE_MIN = int(os.environ.get("PRICE_MIN", 330_000_000))
-PRICE_MAX = int(os.environ.get("PRICE_MAX", 520_000_000))
-MILEAGE_MIN = int(os.environ.get("MILEAGE_MIN", 80_000))
-MILEAGE_MAX = int(os.environ.get("MILEAGE_MAX", 480_000))
-YEAR_MIN = int(os.environ.get("YEAR_MIN", 1383))
+# بازه‌ها بر پایه اندازه‌گیری روی دیوار تنظیم شده‌اند تا روزی حدود ۷ آگهی برسد
+# (با مدل ۱۳۸۳ و همین بازه قیمت/کارکرد، روزی ~۱۵ آگهی می‌آمد که زیاد بود)
+PRICE_MIN = int(os.environ.get("PRICE_MIN", 300_000_000))
+PRICE_MAX = int(os.environ.get("PRICE_MAX", 560_000_000))
+MILEAGE_MIN = int(os.environ.get("MILEAGE_MIN", 60_000))
+MILEAGE_MAX = int(os.environ.get("MILEAGE_MAX", 500_000))
+YEAR_MIN = int(os.environ.get("YEAR_MIN", 1385))
 
 # حداکثر چند صفحه از نتایج خوانده شود (هر صفحه ~۲۵ آگهی)
-MAX_PAGES = int(os.environ.get("MAX_PAGES", 3))
+MAX_PAGES = int(os.environ.get("MAX_PAGES", 4))
 # در صفحه‌بندی عقب‌تر از این تعداد ساعت نرو (آگهی کهنه ارزش فرستادن ندارد)
 FETCH_BACK_HOURS = int(os.environ.get("FETCH_BACK_HOURS", 36))
 

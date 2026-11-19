@@ -28,11 +28,12 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           # برای سخت‌گیرتر یا بازتر کردن فیلترها فقط همین عددها را تغییر دهید
-          PRICE_MIN: "330000000"
-          PRICE_MAX: "520000000"
-          MILEAGE_MIN: "80000"
-          MILEAGE_MAX: "480000"
-          YEAR_MIN: "1383"
+          PRICE_MIN: "300000000"
+          PRICE_MAX: "560000000"
+          MILEAGE_MIN: "60000"
+          MILEAGE_MAX: "500000"
+          YEAR_MIN: "1385"
+          MAX_PAGES: "4"
         run: python divar_pride_monitor.py
 
       # حتی اگر مرحله قبل خطا بدهد، وضعیت ذخیره می‌شود تا آگهی‌های
