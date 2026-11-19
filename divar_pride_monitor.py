@@ -6,12 +6,21 @@
 فیلترها (بالای فایل یا با متغیر محیطی قابل تغییرند):
   • همه مدل‌های پراید سواری (وانت کنار گذاشته می‌شود)
   • قیمت ۳۳۰ تا ۵۲۰ میلیون تومان
-  • مدل ۱۳۸۰ و بالاتر
+  • مدل ۱۳۸۳ و بالاتر
   • کارکرد ۸۰٬۰۰۰ تا ۴۸۰٬۰۰۰ کیلومتر
   • شاسی سالم / سالم و پلمپ (شاسی جلو و عقب هم جدا بررسی می‌شود)
   • بدنه بدون‌رنگ، دوررنگ، خط‌وخش جزیی یا رنگ‌شدگی حداکثر ۲ ناحیه
   • موتور سالم، بدون تصادف و بدون نیاز به تعمیر
   • هیچ اشاره‌ای به اقساط، قسط، چک، سود، درصد، شرایط، پیش‌پرداخت، لیزینگ و وام
+
+ضد تکرار و ضد گم‌شدن:
+  • هر آگهی با «توکن» خودش در seen.json ثبت می‌شود؛ دوباره فرستاده نمی‌شود.
+  • آگهی فقط بعد از ارسال موفق «دیده‌شده» علامت می‌خورد؛ اگر ارسال به خطا بخورد
+    در صف «pending» می‌ماند و اجرای بعدی دوباره می‌فرستد.
+  • وضعیت بعد از هر ارسال ذخیره می‌شود تا اگر اجرا وسط کار قطع شد، آگهی‌های
+    فرستاده‌شده تکراری نشوند و فرستاده‌نشده‌ها در اجرای بعد بروند.
+  • چند صفحه از نتایج خوانده می‌شود تا اگر چند اجرا عقب افتاد، آگهی‌های جدیدِ
+    همان بازه از دست نروند.
 
 اجرا:
     python3 divar_pride_monitor.py            # بررسی و ارسال آگهی‌های جدید
@@ -43,7 +52,16 @@ PRICE_MIN = int(os.environ.get("PRICE_MIN", 330_000_000))
 PRICE_MAX = int(os.environ.get("PRICE_MAX", 520_000_000))
 MILEAGE_MIN = int(os.environ.get("MILEAGE_MIN", 80_000))
 MILEAGE_MAX = int(os.environ.get("MILEAGE_MAX", 480_000))
-YEAR_MIN = int(os.environ.get("YEAR_MIN", 1380))
+YEAR_MIN = int(os.environ.get("YEAR_MIN", 1383))
+
+# حداکثر چند صفحه از نتایج خوانده شود (هر صفحه ~۲۵ آگهی)
+MAX_PAGES = int(os.environ.get("MAX_PAGES", 3))
+# در صفحه‌بندی عقب‌تر از این تعداد ساعت نرو (آگهی کهنه ارزش فرستادن ندارد)
+FETCH_BACK_HOURS = int(os.environ.get("FETCH_BACK_HOURS", 36))
+
+# صف ارسال مجدد: چند بار تلاش شود و تا چند روز نگه داشته شود
+MAX_PENDING_TRIES = 20
+PENDING_TTL = 3 * 24 * 3600
 
 # واژه‌هایی که هر طور در متن بیایند آگهی رد می‌شود (اقساط، شرایط، درصد و ...)
 W = r"(?<![\u0600-\u06FF])"  # مرز کلمه فارسی
@@ -149,22 +167,30 @@ def load_state():
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
             data = json.load(f)
-            if isinstance(data, dict) and "seen" in data:
-                return data
     except (FileNotFoundError, ValueError):
-        pass
-    return {"seen": {}}
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    if not isinstance(data.get("seen"), dict):
+        data["seen"] = {}
+    if not isinstance(data.get("pending"), list):
+        data["pending"] = []
+    return data
 
 
 def save_state(state):
-    if len(state["seen"]) > MAX_SEEN:
-        state["seen"] = dict(list(state["seen"].items())[-MAX_SEEN:])
+    seen = state.get("seen", {})
+    if len(seen) > MAX_SEEN:
+        state["seen"] = dict(list(seen.items())[-MAX_SEEN:])
+    pending = state.get("pending", [])
+    if len(pending) > 200:
+        state["pending"] = pending[-200:]
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=1, sort_keys=True)
 
 
 # --------------------------------------------------------------- دیوار API
-def fetch_search():
+def search_payload(pagination_data=None):
     payload = {
         "city_ids": [CITY_ID],
         "search_data": {
@@ -195,27 +221,56 @@ def fetch_search():
             }
         },
     }
-    res = request("https://api.divar.ir/v8/postlist/w/search", payload)
-    ads, seen = [], set()
-    for widget in res.get("list_widgets", []):
-        if widget.get("widget_type") != "POST_ROW":
-            continue
-        row = widget.get("data", {})
-        token = row.get("token") or (row.get("action", {}).get("payload") or {}).get("token")
-        if not token or token in seen:
-            continue
-        seen.add(token)
-        ads.append(
-            {
-                "token": token,
-                "title": clean(row.get("title", "")),
-                "price_card": clean(row.get("middle_description_text", "")),
-                "mileage_card": clean(row.get("top_description_text", "")),
-                "where": clean(row.get("bottom_description_text", "")),
-                "url": f"https://divar.ir/v/{token}",
-            }
-        )
+    if pagination_data:
+        payload["pagination_data"] = pagination_data
+    return payload
+
+
+def fetch_search(max_pages=MAX_PAGES):
+    """تا چند صفحه از نتیجه را می‌خواند تا آگهی‌ای از قلم نیفتد."""
+    ads, tokens, pagination = [], set(), None
+    for _ in range(max(1, max_pages)):
+        res = request("https://api.divar.ir/v8/postlist/w/search", search_payload(pagination))
+        added = 0
+        for widget in res.get("list_widgets", []):
+            if widget.get("widget_type") != "POST_ROW":
+                continue
+            row = widget.get("data", {})
+            token = row.get("token") or (row.get("action", {}).get("payload") or {}).get("token")
+            if not token or token in tokens:
+                continue
+            tokens.add(token)
+            added += 1
+            ads.append(
+                {
+                    "token": token,
+                    "title": clean(row.get("title", "")),
+                    "price_card": clean(row.get("middle_description_text", "")),
+                    "mileage_card": clean(row.get("top_description_text", "")),
+                    "where": clean(row.get("bottom_description_text", "")),
+                    "url": f"https://divar.ir/v/{token}",
+                }
+            )
+        info = res.get("pagination") or {}
+        pagination = info.get("data")
+        last_date = (pagination or {}).get("last_post_date")
+        if not added or not info.get("has_next_page") or not pagination:
+            break
+        if last_date and older_than_hours(last_date, FETCH_BACK_HOURS):
+            break
+        time.sleep(1)
     return ads
+
+
+def older_than_hours(iso, hours):
+    try:
+        stamp = iso.replace("Z", "+00:00")
+        from datetime import datetime, timezone
+
+        dt = datetime.fromisoformat(stamp)
+        return (datetime.now(timezone.utc) - dt).total_seconds() > hours * 3600
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def fetch_detail(token):
@@ -368,7 +423,11 @@ def check(ad):
 
 # --------------------------------------------------------------- تلگرام
 def tg(method, payload=None):
-    return request(f"https://api.telegram.org/bot{TOKEN}/{method}", payload, timeout=30)
+    res = request(f"https://api.telegram.org/bot{TOKEN}/{method}", payload, timeout=30)
+    if not isinstance(res, dict) or not res.get("ok"):
+        desc = res.get("description") if isinstance(res, dict) else str(res)[:200]
+        raise RuntimeError(f"تلگرام {method} ناموفق بود: {desc}")
+    return res
 
 
 def resolve_chat(state=None):
@@ -423,7 +482,64 @@ def message(ad):
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------- صف ارسال
+def queue_pending(state, token, title, text, error, tries=1):
+    for item in state["pending"]:
+        if item.get("token") == token:
+            item["tries"] = item.get("tries", 1) + 1
+            item["last_error"] = str(error)[:150]
+            return
+    state["pending"].append(
+        {
+            "token": token,
+            "title": title,
+            "text": text,
+            "tries": tries,
+            "added_at": int(time.time()),
+            "last_error": str(error)[:150],
+        }
+    )
+
+
+def send_ad(state, chat, token, text, delay=0.5):
+    """ارسال یک آگهی؛ فقط بعد از موفقیت «دیده‌شده» علامت می‌خورد."""
+    tg("sendMessage", {"chat_id": chat, "text": text, "parse_mode": "HTML"})
+    state["seen"][token] = 1
+    state["pending"] = [p for p in state["pending"] if p.get("token") != token]
+    save_state(state)
+    time.sleep(delay)
+
+
+def flush_pending(state, chat):
+    """آگهی‌هایی که اجرای قبل ارسال نشدند را دوباره می‌فرستد."""
+    sent = 0
+    for item in list(state["pending"]):
+        try:
+            send_ad(state, chat, item["token"], item["text"], delay=0)
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            item["tries"] = item.get("tries", 1) + 1
+            item["last_error"] = str(exc)[:150]
+            expired = time.time() - item.get("added_at", 0) > PENDING_TTL
+            if item["tries"] >= MAX_PENDING_TRIES or expired:
+                state["pending"] = [p for p in state["pending"] if p.get("token") != item["token"]]
+                state["seen"][item["token"]] = 1
+                print(f"  ! ارسال {item.get('title', '')} رها شد ({exc})")
+            else:
+                print(f"  ! ارسال {item.get('title', '')} باز هم ناموفق ماند؛ اجرای بعد")
+            save_state(state)
+    return sent
+
+
 # --------------------------------------------------------------- main
+def report_pending(state):
+    pending = state.get("pending") or []
+    if pending:
+        print(f"{len(pending)} آگهی در صف ارسال مجدد است:")
+        for item in pending[:10]:
+            print(f"  • {item.get('title', '')} ({item.get('tries', 0)} تلاش)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -436,28 +552,60 @@ def main():
         sys.exit("TELEGRAM_BOT_TOKEN تنظیم نشده است.")
 
     state = load_state()
-    try:
-        ads = fetch_search()
-    except Exception as exc:  # noqa: BLE001
-        sys.exit(f"جست‌وجو در دیوار ناموفق بود: {exc}")
+    first_run = not state["seen"] and not state["pending"]
 
-    if not ads:
-        print("نتیجه‌ای برای این فیلترها روی دیوار نیست (یا دیوار درخواست را محدود کرده).")
+    # ---------- حالت آزمایشی: فقط نمایش، هیچ تغییری در seen.json نمی‌دهد
+    if args.dry_run:
+        report_pending(state)
+        try:
+            ads = fetch_search()
+        except Exception as exc:  # noqa: BLE001
+            sys.exit(f"جست‌وجو در دیوار ناموفق بود: {exc}")
+        if not ads:
+            print("نتیجه‌ای برای این فیلترها روی دیوار نیست (یا دیوار درخواست را محدود کرده).")
+            return
+        print(f"{len(ads)} آگهی در نتیجه جست‌وجو، جدیدترین: {ads[0]['title']}")
+        if first_run:
+            print("(حالت اولیه: در اجرای واقعی این آگهی‌ها فقط ثبت می‌شوند و ارسال نمی‌شوند.)")
+            return
+        new_ads = [a for a in ads if a["token"] not in state["seen"]]
+        if not new_ads:
+            print("آگهی جدیدی نیست.")
+            return
+        if args.limit:
+            new_ads = new_ads[: args.limit]
+        print(f"{len(new_ads)} آگهی تازه بررسی می‌شود...")
+        for ad in new_ads:
+            try:
+                ad["detail"] = fetch_detail(ad["token"])
+            except Exception as exc:  # noqa: BLE001
+                print(f"  ! {ad['title']}: صفحه آگهی خوانده نشد ({exc})")
+                continue
+            reason = check(ad)
+            if reason:
+                if args.verbose:
+                    print(f"  ✗ {ad['title']} — {reason}")
+            else:
+                print(f"  ✓ {ad['title']}")
+                print("-" * 50)
+                print(re.sub(r"<[^>]+>", "", message(ad)))
+            time.sleep(1)
         return
 
-    print(f"{len(ads)} آگهی در نتیجه جست‌وجو، جدیدترین: {ads[0]['title']}")
-    new_ads = [a for a in ads if a["token"] not in state["seen"]]
-    first_run = not state["seen"]
-
-    if args.seed or first_run:
+    # ---------- اجرای واقعی
+    if first_run:
+        try:
+            ads = fetch_search()
+        except Exception as exc:  # noqa: BLE001
+            sys.exit(f"جست‌وجو در دیوار ناموفق بود: {exc}")
         for ad in ads:
             state["seen"][ad["token"]] = 1
         save_state(state)
-        print(f"{len(ads)} آگهی به‌عنوان دیده‌شده ثبت شد.")
-        if first_run and not args.dry_run:
-            chat = resolve_chat(state)
-            save_state(state)
-            if chat:
+        print(f"{len(ads)} آگهی به‌عنوان دیده‌شده ثبت شد (اجرای اول).")
+        chat = resolve_chat(state)
+        save_state(state)
+        if chat:
+            try:
                 tg(
                     "sendMessage",
                     {
@@ -472,8 +620,32 @@ def main():
                         ),
                     },
                 )
+            except Exception as exc:  # noqa: BLE001
+                print(f"! پیام فعال‌سازی ارسال نشد: {exc}")
         return
 
+    chat = resolve_chat(state)
+    save_state(state)
+    if state["pending"]:
+        report_pending(state)
+        if chat:
+            sent = flush_pending(state, chat)
+            print(f"{sent} آگهی از صف قبلی ارسال شد.")
+        else:
+            print("chat_id پیدا نشد؛ صف برای اجرای بعد می‌ماند.")
+
+    try:
+        ads = fetch_search()
+    except Exception as exc:  # noqa: BLE001
+        print(f"جست‌وجو در دیوار ناموفق بود: {exc}")
+        return
+
+    if not ads:
+        print("نتیجه‌ای برای این فیلترها روی دیوار نیست (یا دیوار درخواست را محدود کرده).")
+        return
+
+    print(f"{len(ads)} آگهی در نتیجه جست‌وجو، جدیدترین: {ads[0]['title']}")
+    new_ads = [a for a in ads if a["token"] not in state["seen"]]
     if not new_ads:
         print("آگهی جدیدی نیست.")
         return
@@ -486,37 +658,42 @@ def main():
         try:
             ad["detail"] = fetch_detail(ad["token"])
         except Exception as exc:  # noqa: BLE001
-            print(f"  ! {ad['title']}: صفحه آگهی خوانده نشد ({exc})")
+            print(f"  ! {ad['title']}: صفحه آگهی خوانده نشد ({exc}) — اجرای بعد دوباره بررسی می‌شود")
             continue
         reason = check(ad)
         if reason:
             if args.verbose:
                 print(f"  ✗ {ad['title']} — {reason}")
+            state["seen"][ad["token"]] = 1
         else:
             print(f"  ✓ {ad['title']}")
             matched.append(ad)
-        state["seen"][ad["token"]] = 1
         time.sleep(1)
 
-    if args.dry_run:
-        for ad in matched:
-            print("-" * 50)
-            print(re.sub(r"<[^>]+>", "", message(ad)))
-        return
-
+    # ردشده‌ها ثبت می‌شوند؛ قبول‌شده‌ها فقط بعد از ارسال موفق
     save_state(state)
 
     if not matched:
         print("هیچ آگهی‌ای با فیلترها جور نبود.")
         return
 
-    chat = resolve_chat(state)
-    save_state(state)
     if not chat:
-        sys.exit("chat_id پیدا نشد؛ یک بار به ربات پیام بدهید و دوباره اجرا کنید.")
+        for ad in matched:
+            queue_pending(state, ad["token"], ad["title"], message(ad), "chat_id تنظیم نشده")
+        save_state(state)
+        sys.exit("chat_id پیدا نشد؛ آگهی‌ها در صف ماندند و اجرای بعد (پس از ست کردن chat_id) ارسال می‌شوند.")
+
+    sent, failed = 0, 0
     for ad in reversed(matched):
-        tg("sendMessage", {"chat_id": chat, "text": message(ad), "parse_mode": "HTML"})
-    print(f"{len(matched)} آگهی مطابق فیلتر به تلگرام ارسال شد.")
+        try:
+            send_ad(state, chat, ad["token"], message(ad))
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            queue_pending(state, ad["token"], ad["title"], message(ad), exc)
+            save_state(state)
+            failed += 1
+            print(f"  ! ارسال {ad['title']} ناموفق: {exc}")
+    print(f"{sent} آگهی ارسال شد" + (f"، {failed} آگهی در صف اجرای بعد ماند." if failed else "."))
 
 
 if __name__ == "__main__":
