@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}خانه{% endblock %}
+{% block body %}
+<h1>وضعیت ربات</h1>
+
+{% if not telegram_ready %}
+<p class="alert">توکن ربات تلگرام تنظیم نشده است؛ تا وقتی <code>TELEGRAM_BOT_TOKEN</code> در فایل تنظیمات سرور نباشد، ارسالی انجام نمی‌شود.</p>
+{% endif %}
+
+<div class="cards">
+  <div class="card">
+    <span class="muted">ربات</span>
+    <strong class="{{ 'on' if cfg.enabled else 'off' }}">{{ 'روشن' if cfg.enabled else 'خاموش' }}</strong>
+  </div>
+  <div class="card">
+    <span class="muted">ارسال امروز</span>
+    <strong>{{ sent_today }}</strong>
+  </div>
+  <div class="card">
+    <span class="muted">ارسال یک ساعت اخیر</span>
+    <strong>{{ sent_hour }} <small class="muted">/ سقف {{ cfg.hourly_cap or 'بی‌نهایت' }}</small></strong>
+  </div>
+  <div class="card">
+    <span class="muted">در انتظار ارسال</span>
+    <strong>{{ counts.get('waiting', 0) }}</strong>
+  </div>
+  <div class="card">
+    <span class="muted">کل ارسال‌شده</span>
+    <strong>{{ counts.get('sent', 0) }}</strong>
+  </div>
+  <div class="card">
+    <span class="muted">رد‌شده</span>
+    <strong>{{ counts.get('rejected', 0) }}</strong>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>فیلترهای فعلی</h2>
+  <ul class="facts">
+    <li>قیمت: <b>{{ cfg.price_min // 1000000 }}</b> تا <b>{{ cfg.price_max // 1000000 }}</b> میلیون تومان</li>
+    <li>کارکرد: <b>{{ cfg.mileage_min // 1000 }}</b> تا <b>{{ cfg.mileage_max // 1000 }}</b> هزار کیلومتر</li>
+    <li>مدل: <b>{{ cfg.year_min }}</b> تا <b>{{ cfg.year_max }}</b></li>
+    <li>هر <b>{{ cfg.interval_minutes }}</b> دقیقه یک‌بار، تا <b>{{ cfg.max_pages }}</b> صفحه از نتایج</li>
+    <li>شاسی سالم · بدنه بدون‌رنگ/دوررنگ · بدون تصادف و نیاز به تعمیر · بدون اقساط و شرایط</li>
+  </ul>
+  <a class="btn" href="/filters">تغییر فیلترها</a>
+</div>
+
+<div class="panel">
+  <h2>آخرین بررسی‌ها</h2>
+  <p class="muted">آخرین اجرا: {{ cfg.last_tick or 'هنوز اجرا نشده' }} — {{ cfg.last_result or '—' }}</p>
+  <table>
+    <thead><tr><th>زمان</th><th>نتیجه</th><th>دیده</th><th>تازه</th><th>رد</th><th>ارسال</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td class="num">{{ r.started_at[5:16].replace('T', ' ') }}</td>
+        <td class="{{ 'ok' if r.ok else 'bad' }}">{{ r.message or ('موفق' if r.ok else 'خطا') }}</td>
+        <td>{{ r.fetched }}</td><td>{{ r.new_ads }}</td><td>{{ r.rejected }}</td><td>{{ r.sent }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="muted">هنوز اجرایی ثبت نشده.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <a class="btn secondary" href="/runs">همه اجراها</a>
+</div>
+{% endblock %}

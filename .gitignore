@@ -1,2 +1,10 @@
+# فایل تنظیمات واقعی روی سرور (.env) هرگز در مخزن نمی‌رود
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+.venv/
 __pycache__/
 *.pyc
+.pytest_cache/

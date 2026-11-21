@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}آگهی‌ها{% endblock %}
+{% block body %}
+<h1>آگهی‌ها</h1>
+
+<div class="tabs">
+  <a href="/ads" class="{{ 'active' if not status else '' }}">همه</a>
+  <a href="/ads?status=sent" class="{{ 'active' if status == 'sent' else '' }}">ارسال‌شده ({{ counts.get('sent', 0) }})</a>
+  <a href="/ads?status=waiting" class="{{ 'active' if status == 'waiting' else '' }}">در انتظار ({{ counts.get('waiting', 0) }})</a>
+  <a href="/ads?status=rejected" class="{{ 'active' if status == 'rejected' else '' }}">رد‌شده ({{ counts.get('rejected', 0) }})</a>
+  <a href="/ads?status=error" class="{{ 'active' if status == 'error' else '' }}">خطا ({{ counts.get('error', 0) }})</a>
+</div>
+
+<form method="post" action="/ads/recheck" class="inline">
+  <button class="btn secondary" type="submit">رد‌شده‌های ۷ روز اخیر را با فیلترهای فعلی دوباره بسنج</button>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>عنوان</th><th>قیمت</th><th>کارکرد</th><th>مدل</th><th>وضعیت</th><th>دلیل</th><th>زمان</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.title or r.token }}</a></td>
+      <td class="num">{{ (r.price // 1000000 ~ ' م') if r.price else '—' }}</td>
+      <td class="num">{{ (r.mileage // 1000 ~ ' ه') if r.mileage else '—' }}</td>
+      <td class="num">{{ r.year or '—' }}</td>
+      <td><span class="pill {{ r.status }}">{{ STATUS_LABELS.get(r.status, r.status) }}</span></td>
+      <td class="muted">{{ r.reason or '—' }}</td>
+      <td class="num muted">{{ (r.sent_at or r.first_seen)[5:16].replace('T', ' ') }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">چیزی نیست.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

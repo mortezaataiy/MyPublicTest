@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}ورود به پنل{% endblock %}
+{% block body %}
+<div class="login">
+  <h1>پنل پراید دیوار</h1>
+  <p class="muted">برای تغییر فیلترها و دیدن آگهی‌ها وارد شوید.</p>
+  {% if error %}<p class="alert">رمز اشتباه است.</p>{% endif %}
+  <form method="post" action="/login">
+    <label>رمز ورود
+      <input type="password" name="password" autofocus required>
+    </label>
+    <button class="primary" type="submit">ورود</button>
+  </form>
+</div>
+{% endblock %}

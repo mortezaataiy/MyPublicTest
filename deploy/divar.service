@@ -1,0 +1,15 @@
+[Unit]
+Description=Divar Pride Panel (panel + background worker)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/divar
+EnvironmentFile=/opt/divar/.env
+ExecStart=/opt/divar/.venv/bin/uvicorn run_panel:app --host 127.0.0.1 --port 8004
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

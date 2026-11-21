@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}اجراها{% endblock %}
+{% block body %}
+<h1>اجراها</h1>
+
+<div class="actions">
+  <form method="post" action="/run-now" class="inline">
+    <button class="btn" type="submit">همین حالا بررسی کن</button>
+  </form>
+  <span class="muted">آخرین اجرا: {{ cfg.last_tick or '—' }}</span>
+</div>
+<p class="muted">{{ cfg.last_result or '' }}</p>
+
+{% if pending %}
+<div class="panel">
+  <h2>در صف ارسال ({{ pending|length }})</h2>
+  <table>
+    <thead><tr><th>عنوان</th><th>تلاش</th><th>آخرین خطا</th></tr></thead>
+    <tbody>
+    {% for p in pending %}
+      <tr><td>{{ p.title or p.token }}</td><td>{{ p.tries }}</td><td class="muted">{{ p.last_error or '—' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<table>
+  <thead><tr><th>#</th><th>شروع</th><th>پایان</th><th>وضعیت</th><th>دیده</th><th>تازه</th><th>رد</th><th>ارسال</th><th>پیام</th></tr></thead>
+  <tbody>
+  {% for r in runs %}
+    <tr>
+      <td class="num">{{ r.id }}</td>
+      <td class="num">{{ r.started_at[5:16].replace('T', ' ') }}</td>
+      <td class="num">{{ r.finished_at[5:16].replace('T', ' ') if r.finished_at else '—' }}</td>
+      <td class="{{ 'ok' if r.ok else 'bad' }}">{{ 'موفق' if r.ok else 'خطا' }}</td>
+      <td>{{ r.fetched }}</td><td>{{ r.new_ads }}</td><td>{{ r.rejected }}</td><td>{{ r.sent }}</td>
+      <td class="muted small">{{ r.message or '' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="muted">هنوز اجرایی ثبت نشده.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

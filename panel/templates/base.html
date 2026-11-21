@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}پنل پراید دیوار{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{% if auth_ok %}
+<header class="top">
+  <div class="brand">🚗 پنل پراید دیوار</div>
+  <nav>
+    <a href="/" class="{{ 'active' if page == 'home' else '' }}">خانه</a>
+    <a href="/filters" class="{{ 'active' if page == 'filters' else '' }}">فیلترها</a>
+    <a href="/ads" class="{{ 'active' if page == 'ads' else '' }}">آگهی‌ها</a>
+    <a href="/runs" class="{{ 'active' if page == 'runs' else '' }}">اجراها</a>
+  </nav>
+  <form method="post" action="/logout"><button class="ghost">خروج</button></form>
+</header>
+{% endif %}
+<main class="wrap">
+  {% block body %}{% endblock %}
+</main>
+</body>
+</html>
