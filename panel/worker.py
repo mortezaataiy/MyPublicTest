@@ -126,8 +126,11 @@ def run_cycle(trigger: str = "schedule") -> dict:
         fetched = new_ads = rejected = sent = 0
         notes = []
 
+        # بدون توکن تلگرام هیچ ارسالی تلاش نمی‌شود (تا آگهی‌ها خطا نخورند)
+        can_send = bool(telegram.token()) and bool(chat)
+
         # ۱) صف ارسال قبلی
-        if chat:
+        if can_send:
             sent += flush_pending(chat)
 
         # ۲) بررسی مجدد درخواستی
@@ -175,10 +178,12 @@ def run_cycle(trigger: str = "schedule") -> dict:
             time.sleep(1)
 
         # ۴) ارسال آماده‌ها با سقف ساعتی
-        if chat:
+        if can_send:
             sent += send_waiting(chat, int(cfg.get("hourly_cap") or 0))
         elif db.query("SELECT 1 FROM ads WHERE status='waiting' LIMIT 1"):
-            notes.append("chat_id تنظیم نشده؛ آگهی‌ها در انتظار ماندند")
+            notes.append(
+                "ارسال ممکن نیست (توکن ربات یا شناسه چت تنظیم نشده)؛ آگهی‌ها منتظر ماندند"
+            )
 
         summary = (
             f"{fetched} آگهی دیده شد، {new_ads} تازه، {rejected} رد، {sent} ارسال"

@@ -43,7 +43,7 @@ sed -e "s#/opt/divar#${APP_DIR}#g" -e "s#--port 8004#--port ${PORT}#" \
 systemctl daemon-reload
 systemctl enable --now "$SERVICE"
 sleep 2
-systemctl --no-pager status "$SERVICE" | head -12
+systemctl --no-pager status "$SERVICE" | head -12 || true
 
 echo "== 6) nginx =="
 sed -e "s#divar\.chabooksaz\.ir#${DOMAIN}#g" -e "s#127\.0\.0\.1:8004#127.0.0.1:${PORT}#g" \
