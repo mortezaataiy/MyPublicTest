@@ -18,7 +18,7 @@
 <table>
   <thead>
     <tr>
-      <th>عنوان</th><th>قیمت</th><th>کارکرد</th><th>مدل</th><th>وضعیت</th><th>دلیل</th><th>زمان</th>
+      <th>عنوان</th><th>قیمت</th><th>کارکرد</th><th>مدل</th><th>وضعیت</th><th>دلیل</th><th>زمان</th><th>کار</th>
     </tr>
   </thead>
   <tbody>
@@ -29,11 +29,32 @@
       <td class="num">{{ (r.mileage // 1000 ~ ' ه') if r.mileage else '—' }}</td>
       <td class="num">{{ r.year or '—' }}</td>
       <td><span class="pill {{ r.status }}">{{ STATUS_LABELS.get(r.status, r.status) }}</span></td>
-      <td class="muted">{{ r.reason or '—' }}</td>
+      <td class="muted">
+        {{ r.reason or '—' }}
+        {% set text = r.detail_json | snippet %}
+        {% if text and r.status in ('rejected', 'error') %}
+          <details><summary>متن آگهی</summary><span class="muted">{{ text }}</span></details>
+        {% endif %}
+      </td>
       <td class="num muted">{{ (r.sent_at or r.first_seen)[5:16].replace('T', ' ') }}</td>
+      <td>
+        {% if r.status in ('rejected', 'error', 'waiting') %}
+          <form method="post" action="/ads/send" class="inline">
+            <input type="hidden" name="token" value="{{ r.token }}">
+            <button type="submit" class="btn small">ارسال کن</button>
+          </form>
+        {% endif %}
+        {% if r.status == 'rejected' %}
+          <form method="post" action="/ads/except" class="inline">
+            <input type="hidden" name="token" value="{{ r.token }}">
+            <input type="text" name="phrase" placeholder="عبارت استثنا" size="12">
+            <button type="submit" class="btn small secondary">استثنا</button>
+          </form>
+        {% endif %}
+      </td>
     </tr>
   {% else %}
-    <tr><td colspan="7" class="muted">چیزی نیست.</td></tr>
+    <tr><td colspan="8" class="muted">چیزی نیست.</td></tr>
   {% endfor %}
   </tbody>
 </table>

@@ -59,6 +59,44 @@
         <input type="number" name="year_max" min="1300" max="1425" value="{{ cfg.year_max }}">
       </label>
     </div>
+    <label class="switch">
+      <input type="checkbox" name="allow_front_impact" value="1" {% if cfg.allow_front_impact %}checked{% endif %}>
+      شاسی جلو با ضربهٔ جزئی هم قبول باشد
+    </label>
+    <input type="hidden" name="allow_front_impact" value="0">
+    <p class="muted">
+      دیوار برای بیشتر پرایدها «شاسی جلو: ضربه‌خورده» ثبت می‌کند؛ اگر این گزینه خاموش باشد آن آگهی‌ها رد می‌شوند (آگهی‌های کمتری می‌آید).
+      شاسی تعویض‌شده، رنگ‌شده یا جوش‌خورده در هر حالت رد می‌شود.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h2>استثناها (ترکیب کلمات و جمله‌ها)</h2>
+    <p class="muted">
+      اگر عبارتی که اینجا اضافه می‌کنید در آگهی باشد، آن عبارت پیش از بررسی واژه‌ها نادیده گرفته می‌شود؛
+      مثلاً استثنای «تازه تعمیر» باعث می‌شود آگهی به‌خاطر واژهٔ تعمیر رد نشود.
+      می‌توانید از صفحهٔ «آگهی‌ها» روی هر آگهی رد‌شده هم دکمهٔ استثنا را بزنید.
+    </p>
+    <table class="words">
+      <thead><tr><th>فعال</th><th>عبارت استثنا</th><th>استفاده شده</th><th>حذف</th></tr></thead>
+      <tbody>
+      {% for e in exceptions %}
+        <tr>
+          <td><input type="checkbox" name="exception_{{ e.id }}" {% if e.enabled %}checked{% endif %}></td>
+          <td>{{ e.phrase }}</td>
+          <td class="num">{{ e.hits }}</td>
+          <td><input type="checkbox" name="delete_exception_{{ e.id }}"></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="muted">هنوز استثنایی اضافه نشده است.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="grid new-word">
+      <label>عبارت تازه
+        <input type="text" name="new_exception" placeholder="مثلاً: تعمیر شده یا بدون شرایط">
+      </label>
+    </div>
   </div>
 
   <div class="panel">
@@ -97,6 +135,21 @@
   </div>
   <p id="preview-result" class="alert" hidden></p>
 </form>
+
+{% if reasons %}
+<div class="panel">
+  <h2>بیشترین دلیل‌های رد شدن</h2>
+  <p class="muted">اگر دلیلی به نظرتان بی‌مورد است، همان واژه را در فهرست بالا غیرفعال کنید یا عبارت استثنا اضافه کنید.</p>
+  <table>
+    <thead><tr><th>دلیل</th><th>تعداد</th></tr></thead>
+    <tbody>
+    {% for r in reasons %}
+      <tr><td>{{ r.reason }}</td><td class="num">{{ r.n }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 {% if history %}
 <div class="panel">

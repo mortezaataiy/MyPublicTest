@@ -36,6 +36,23 @@ def _make_text(row) -> str:
     return telegram.format_ad(ad)
 
 
+def send_one_now(token: str) -> bool:
+    """یک آگهی را به‌خواسته کاربر و بی‌توجه به سقف ساعتی می‌فرستد."""
+    chat = db.typed_settings().get("chat_id")
+    row = db.query_one("SELECT * FROM ads WHERE token = ?", (token,))
+    if not row or not chat or not telegram.token():
+        return False
+    text = _make_text(row)
+    try:
+        telegram.send_message(chat, text)
+        db.mark_sent(token)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        db.add_pending(token, row.get("title", ""), text, exc)
+        db.set_ad_status(token, "error", f"تلگرام: {str(exc)[:150]}")
+        return False
+
+
 def flush_pending(chat_id: str) -> int:
     """آگهی‌هایی که ارسالشان خطا خورده بود را دوباره می‌فرستد."""
     sent = 0
@@ -87,6 +104,7 @@ def recheck_rejected() -> tuple[int, int]:
     """ردشده‌های اخیر را با فیلترهای جدید دوباره می‌سنجد (بدون درخواست به دیوار)."""
     cfg = db.typed_settings()
     words = db.list_words()
+    exceptions = db.list_exceptions()
     passed = total = 0
     for row in db.recent_for_recheck(7):
         try:
@@ -100,7 +118,7 @@ def recheck_rejected() -> tuple[int, int]:
             "mileage_card": "",
             "detail": detail,
         }
-        reason = filters.evaluate(ad, cfg, words)
+        reason = filters.evaluate(ad, cfg, words, exceptions)
         if reason is None:
             db.set_ad_status(row["token"], "waiting", "")
             passed += 1
@@ -116,6 +134,7 @@ def run_cycle(trigger: str = "schedule") -> dict:
     try:
         cfg = db.typed_settings()
         words = db.list_words()
+        exceptions = db.list_exceptions()
         run_id = db.start_run()
         if not cfg["enabled"] and trigger == "schedule":
             db.finish_run(run_id, True, 0, 0, 0, 0, "ربات خاموش است")
@@ -166,7 +185,7 @@ def run_cycle(trigger: str = "schedule") -> dict:
                 notes.append(f"صفحه آگهی خوانده نشد: {str(exc)[:80]}")
                 db.save_ad({**ad, "status": "error", "reason": "خواندن صفحه آگهی ناموفق"})
                 continue
-            reason = filters.evaluate(ad, cfg, words)
+            reason = filters.evaluate(ad, cfg, words, exceptions)
             if reason:
                 rejected += 1
                 word = reason.split("«")[1].split("»")[0] if "«" in reason else ""

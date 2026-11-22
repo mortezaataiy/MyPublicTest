@@ -7,6 +7,18 @@ import re
 from .defaults import NEGATIONS
 
 FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+SPACES = r"[\s\u200c\u200e\u200f]+"  # فاصله، نیم‌فاصله و کاراکترهای جهت
+
+
+def norm_spaces(text):
+    """فاصله/نیم‌فاصله‌ها را یکدست می‌کند (دیوار گاهی «دوررنگ» می‌نویسد و
+    گاهی «دور رنگ»)."""
+    return re.sub(SPACES, " ", str(text or "")).strip()
+
+
+def compact(text):
+    """همه فاصله‌ها را برمی‌دارد تا مقایسه‌ها به فاصله حساس نباشند."""
+    return re.sub(SPACES, "", str(text or ""))
 
 
 def to_num(text):
@@ -52,6 +64,26 @@ def compile_words(words):
     return hard, neg
 
 
+# ---------------------------------------------------------------- استثناها
+def phrase_pattern(phrase):
+    """الگوی یک عبارت استثنا؛ فاصله‌ها انعطاف‌پذیر هستند."""
+    parts = [re.escape(p) for p in norm_spaces(phrase).split(" ") if p]
+    if not parts:
+        return None
+    return re.compile("[\\s\u200c\u200e\u200f]*".join(parts))
+
+
+def mask_exceptions(text, phrases):
+    """عبارت‌های استثنا را از متن حذف می‌کند تا واژه‌های ممنوعه داخلشان
+    آگهی را رد نکنند."""
+    out = str(text or "")
+    for phrase in phrases or []:
+        pat = phrase_pattern(phrase)
+        if pat:
+            out = pat.sub(" ", out)
+    return out
+
+
 def bad_reason(text, hard, neg):
     """واژه ممنوعه‌ای که در متن آمده، وگرنه None."""
     t = str(text or "").translate(FA_DIGITS)
@@ -69,38 +101,57 @@ def bad_reason(text, hard, neg):
 
 # ---------------------------------------------------------------- شاسی/بدنه
 def body_ok(body):
-    """بدنه قابل قبول: بدون‌رنگ، دوررنگ، خط‌وخش جزیی، رنگ‌شدگی حداکثر ۲ ناحیه."""
-    b = str(body or "").replace("\u200c", " ").strip()
+    """بدنه قابل قبول: بدون‌رنگ، دوررنگ، خط‌وخش جزیی، رنگ‌شدگی حداکثر ۲ ناحیه.
+
+    مقایسه بدون فاصله انجام می‌شود تا «دوررنگ» و «دور رنگ» یکی حساب شوند.
+    """
+    b = norm_spaces(body)
     if not b:
         return False
-    if any(w in b for w in ("تصادف", "تمام رنگ", "کامل رنگ", "سقف رنگ")):
+    c = compact(b)
+    if any(w in c for w in ("تصادف", "تمامرنگ", "کاملرنگ", "سقفرنگ", "رنگتمام", "رنگکامل")):
         return False
-    if "رنگ شدگی" in b:
+    if "رنگشدگی" in c:
         n = to_num(b)
         return n is None or n <= 2
     return any(
-        w in b
+        w in c
         for w in (
-            "بدون رنگ",
-            "دور رنگ",
-            "بی خط",
-            "خط و خش",
+            "بدونرنگ",
+            "دوررنگ",
+            "بیخط",
+            "خطوخش",
             "سالم",
-            "صافکاری بی رنگ",
-            "صافکاری بدون رنگ",
-            "بی رنگ",
+            "صافکاریبیرنگ",
+            "صافکاریبدونرنگ",
+            "بیرنگ",
         )
     )
 
 
-def chassis_ok(chassis):
-    """همه شاسی‌های آمده باید سالم باشند."""
+CHASSIS_BAD = ("رنگ", "تعویض", "ضربه", "جوش", "کج", "بریده", "ترک")
+
+
+def chassis_ok(chassis, allow_front_impact=True):
+    """همه شاسی‌های آمده باید سالم باشند.
+
+    اگر allow_front_impact روشن باشد، «شاسی جلو: ضربه‌خورده» قبول می‌شود؛ چون
+    دیوار این وضعیت را برای بیشتر پرایدها ثبت می‌کند و شاسی جلو با ضربهٔ جزئی
+    تقریباً همیشه هست. تعویض/رنگ/جوش در شاسی جلو همچنان رد می‌شود.
+    """
     if not chassis:
         return False
-    for value in chassis.values():
-        if "سالم" not in value:
+    for label, value in chassis.items():
+        v = compact(value)
+        if not v:
             return False
-        if any(w in value for w in ("رنگ", "تعویض", "ضربه", "جوش", "کج", "بریده", "ترک")):
+        front = "جلو" in compact(label)
+        if front and allow_front_impact and "ضربه" in v:
+            if not any(w in v for w in ("تعویض", "رنگ", "جوش", "کج", "بریده", "ترک")):
+                continue
+        if "سالم" not in v:
+            return False
+        if any(w in v for w in CHASSIS_BAD):
             return False
     return True
 
@@ -125,25 +176,34 @@ def mileage_of(specs, card_value):
     return n if n is not None else to_num(card_value)
 
 
-def evaluate(ad, cfg, words):
+def evaluate(ad, cfg, words, exceptions=None):
     """None اگر با فیلترها جور باشد، وگرنه دلیل رد.
 
     ad:  {title, price_card, mileage_card, detail:{specs, assessment, title, description}}
     cfg: تنظیمات عددی (price_min, price_max, ...)
     words: فهرست واژه‌های دیتابیس (list_words())
+    exceptions: فهرست استثناها؛ عبارت‌هایشان پیش از بررسی واژه‌ها حذف می‌شود
     """
     detail = ad.get("detail") or {}
     specs = detail.get("specs") or {}
     assess = detail.get("assessment") or {}
     hard, neg = compile_words(words)
 
-    text = " ".join(
+    raw = " ".join(
         [ad.get("title", ""), detail.get("title", ""), detail.get("description", "")]
     ).translate(FA_DIGITS)
+    phrases = [
+        e.get("phrase", "") for e in (exceptions or []) if int(e.get("enabled", 1) or 0)
+    ]
+    text = mask_exceptions(norm_spaces(raw), phrases)
 
     word = bad_reason(text, hard, neg)
     if word:
         return f"واژه «{word}» در آگهی"
+
+    installment = compact(specs.get("امکان خرید قسطی", ""))
+    if installment and installment not in ("خیر", "ندارد", "نه"):
+        return "امکان خرید قسطی در آگهی"
 
     price = to_num(ad.get("price_card")) or to_num(specs.get("قیمت پایه", ""))
     if price is None:
@@ -166,14 +226,17 @@ def evaluate(ad, cfg, words):
         return f"مدل {year} بالاتر از {cfg['year_max']}"
 
     engine = assess.get("موتور", "")
-    if engine and "سالم" not in engine:
+    if engine and "سالم" not in compact(engine):
         return f"موتور: {engine}"
 
     chassis = {k: v for k, v in assess.items() if "شاسی" in k}
     if not chassis:
         return "وضعیت شاسی در آگهی نیامده"
-    if not chassis_ok(chassis):
-        label, value = next((k, v) for k, v in chassis.items() if not chassis_ok({k: v}))
+    allow_front = bool(cfg.get("allow_front_impact"))
+    if not chassis_ok(chassis, allow_front):
+        label, value = next(
+            (k, v) for k, v in chassis.items() if not chassis_ok({k: v}, allow_front)
+        )
         return f"{label}: {value}"
 
     body = assess.get("بدنه", "")
@@ -185,7 +248,7 @@ def evaluate(ad, cfg, words):
     return None
 
 
-def preview(cfg, words, rows, limit: int = 200):
+def preview(cfg, words, rows, limit: int = 200, exceptions=None):
     """چند آگهی از آگهی‌های ذخیره‌شده با تنظیمات فعلی قبول می‌شوند (بدون
     هیچ درخواستی به دیوار)."""
     import json
@@ -204,7 +267,7 @@ def preview(cfg, words, rows, limit: int = 200):
             "detail": detail,
         }
         total += 1
-        reason = evaluate(ad, cfg, words)
+        reason = evaluate(ad, cfg, words, exceptions)
         if reason is None:
             passed += 1
             if len(samples) < 5:

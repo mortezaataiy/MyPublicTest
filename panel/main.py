@@ -53,6 +53,21 @@ templates.env.globals["STATUS_LABELS"] = {
 templates.env.filters["num"] = lambda value: f"{int(value):,}" if value not in (None, "") else "—"
 
 
+def _snippet(detail_json, limit: int = 240) -> str:
+    """چند خط از متن آگهی، برای اینکه بشود فهمید چرا رد شده."""
+    import json
+
+    try:
+        detail = json.loads(detail_json or "{}")
+    except ValueError:
+        return ""
+    text = " ".join([detail.get("title", ""), detail.get("description", "")]).strip()
+    return text[:limit]
+
+
+templates.env.filters["snippet"] = _snippet
+
+
 # ---------------------------------------------------------------- ورود
 def require(request: Request):
     if not auth.session_ok(request.cookies.get(auth.COOKIE, "")):
@@ -131,6 +146,7 @@ def _cfg_from_form(form) -> tuple[dict, dict]:
         errors.append("همه بازه‌ها باید عدد باشند")
     values["chat_id"] = (form.get("chat_id") or "").strip()
     values["enabled"] = "1" if form.get("enabled") else "0"
+    values["allow_front_impact"] = "1" if form.get("allow_front_impact") else "0"
 
     if not errors:
         if int(values["price_min"]) >= int(values["price_max"]):
@@ -158,6 +174,7 @@ def _cfg_from_form(form) -> tuple[dict, dict]:
             "hourly_cap",
         }
     }
+    typed["allow_front_impact"] = values["allow_front_impact"] == "1"
     return values, {"errors": errors, "typed": typed}
 
 
@@ -172,6 +189,8 @@ def filters_page(request: Request, saved: int = 0, passed: int = 0,
             "auth_ok": True,
             "cfg": db.typed_settings(),
             "words": db.list_words(),
+            "exceptions": db.list_exceptions(),
+            "reasons": db.reject_reason_counts(8),
             "saved": saved,
             "passed": passed,
             "total": total,
@@ -203,9 +222,22 @@ async def save_filters(request: Request, ok: bool = Depends(require)):
     if new_word:
         db.add_word(new_word, form.get("new_kind") or "hard")
 
+    # استثناها: فعال/غیرفعال، حذف، افزودن
+    for rule in db.list_exceptions():
+        eid = rule["id"]
+        if form.get(f"delete_exception_{eid}"):
+            db.delete_exception(eid)
+            continue
+        db.set_exception(eid, bool(form.get(f"exception_{eid}")))
+    new_exception = (form.get("new_exception") or "").strip()
+    if new_exception:
+        db.add_exception(new_exception)
+
     # پیش‌نمایش با تنظیمات تازه، روی آگهی‌های اخیرِ ذخیره‌شده (بدون تماس با دیوار)
     words = db.list_words()
-    result = filters.preview(extra["typed"], words, db.ads_with_details(30))
+    result = filters.preview(
+        extra["typed"], words, db.ads_with_details(30), exceptions=db.list_exceptions()
+    )
     db.set_settings(values)
     db.log_settings_change(
         "ویرایش فیلترها از پنل", values, result["passed"]
@@ -223,7 +255,12 @@ def api_preview(request: Request, ok: bool = Depends(require)):
     values, extra = _cfg_from_form(q)
     if extra["errors"]:
         return JSONResponse({"error": "؛ ".join(extra["errors"])}, status_code=400)
-    result = filters.preview(extra["typed"], db.list_words(), db.ads_with_details(30))
+    result = filters.preview(
+        extra["typed"],
+        db.list_words(),
+        db.ads_with_details(30),
+        exceptions=db.list_exceptions(),
+    )
     return JSONResponse(result)
 
 
@@ -241,6 +278,30 @@ def ads_page(request: Request, status: str = "", ok: bool = Depends(require)):
             "counts": db.status_counts(),
         },
     )
+
+
+@app.post("/ads/send")
+def ads_send(token: str = Form(""), ok: bool = Depends(require)):
+    """ارسال دستی یک آگهی رد‌شده (بدون توجه به فیلترها)."""
+    if token:
+        threading.Thread(target=worker.send_one_now, args=(token,), daemon=True).start()
+    return RedirectResponse("/ads?status=rejected", status_code=303)
+
+
+@app.post("/ads/except")
+def ads_except(
+    token: str = Form(""), phrase: str = Form(""), ok: bool = Depends(require)
+):
+    """افزودن عبارت استثنا از روی یک آگهی رد‌شده و بازبینی دوباره."""
+    phrase = " ".join((phrase or "").split())
+    if phrase:
+        db.add_exception(phrase)
+        db.log_settings_change(f"استثنای تازه: {phrase}", {"exception": phrase}, None)
+        db.set_settings({"recheck_requested": "1"})
+        threading.Thread(
+            target=worker.run_cycle, kwargs={"trigger": "manual"}, daemon=True
+        ).start()
+    return RedirectResponse("/ads?status=rejected", status_code=303)
 
 
 @app.post("/ads/recheck")

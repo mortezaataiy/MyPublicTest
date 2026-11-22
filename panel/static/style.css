@@ -79,6 +79,12 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
   border: 1px solid var(--accent); background: var(--accent); color: #fff;
 }
 .btn.secondary { background: transparent; color: var(--text); border-color: var(--line); }
+.btn.small { padding: 2px 8px; font-size: 12px; }
+table details { margin-top: 4px; }
+table details summary { cursor: pointer; font-size: 12px; }
+table details span { display: block; font-size: 12px; max-width: 420px; line-height: 1.7; }
+table form.inline { display: inline-flex; gap: 4px; margin: 2px 0; }
+table form.inline input[type="text"] { padding: 2px 6px; font-size: 12px; }
 button.ghost { background: transparent; color: var(--muted); border-color: var(--line); padding: 6px 12px; }
 .btn:hover, button:hover { filter: brightness(1.08); text-decoration: none; }
 

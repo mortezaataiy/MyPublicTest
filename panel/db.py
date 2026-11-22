@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .defaults import DEFAULT_SETTINGS, HARD_BAD, NEGATABLE_BAD
+from .defaults import DEFAULT_EXCEPTIONS, DEFAULT_SETTINGS, HARD_BAD, NEGATABLE_BAD
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("DIVAR_DATA_DIR", str(BASE_DIR / "data")))
@@ -27,6 +27,13 @@ CREATE TABLE IF NOT EXISTS words (
     enabled INTEGER NOT NULL DEFAULT 1,
     hits    INTEGER NOT NULL DEFAULT 0,
     UNIQUE(word, kind)
+);
+CREATE TABLE IF NOT EXISTS exceptions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    phrase     TEXT NOT NULL UNIQUE,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    hits       INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS ads (
     token      TEXT PRIMARY KEY,
@@ -128,6 +135,10 @@ def init_db() -> None:
             conn.executemany(
                 "INSERT OR IGNORE INTO words(word, kind, pattern) VALUES(?, ?, ?)", rows
             )
+        conn.executemany(
+            "INSERT OR IGNORE INTO exceptions(phrase, created_at) VALUES(?, ?)",
+            [(p, now_iso()) for p in DEFAULT_EXCEPTIONS],
+        )
         conn.commit()
 
 
@@ -166,6 +177,12 @@ def typed_settings() -> dict:
             out[key] = int(DEFAULT_SETTINGS.get(key, "0"))
     out["enabled"] = str(data.get("enabled", "1")) not in ("0", "false", "False", "")
     out["chat_id"] = str(data.get("chat_id", "")).strip()
+    out["allow_front_impact"] = str(data.get("allow_front_impact", "0")) not in (
+        "0",
+        "false",
+        "False",
+        "",
+    )
     return out
 
 
@@ -236,6 +253,37 @@ def bump_word_hits(word: str) -> None:
     execute("UPDATE words SET hits = hits + 1 WHERE word = ?", (word,))
 
 
+# ---------------------------------------------------------------- استثناها
+def list_exceptions():
+    return query("SELECT * FROM exceptions ORDER BY id")
+
+
+def add_exception(phrase: str) -> None:
+    phrase = " ".join((phrase or "").split())
+    if len(phrase) < 2:
+        return
+    execute(
+        "INSERT INTO exceptions(phrase, created_at) VALUES(?, ?) "
+        "ON CONFLICT(phrase) DO UPDATE SET enabled = 1",
+        (phrase, now_iso()),
+    )
+
+
+def set_exception(exception_id: int, enabled: bool) -> None:
+    execute(
+        "UPDATE exceptions SET enabled = ? WHERE id = ?",
+        (1 if enabled else 0, exception_id),
+    )
+
+
+def delete_exception(exception_id: int) -> None:
+    execute("DELETE FROM exceptions WHERE id = ?", (exception_id,))
+
+
+def bump_exception_hits(phrase: str) -> None:
+    execute("UPDATE exceptions SET hits = hits + 1 WHERE phrase = ?", (phrase,))
+
+
 # ---------------------------------------------------------------- آگهی‌ها
 def ad_exists(token: str) -> bool:
     return bool(query_one("SELECT 1 FROM ads WHERE token = ?", (token,)))
@@ -288,12 +336,23 @@ def ads_page(status: str = "", limit: int = 200):
     if status:
         return query(
             "SELECT token, title, url, price, mileage, year, status, reason, "
-            "first_seen, sent_at FROM ads WHERE status = ? ORDER BY first_seen DESC LIMIT ?",
+            "first_seen, sent_at, detail_json FROM ads WHERE status = ? "
+            "ORDER BY first_seen DESC LIMIT ?",
             (status, limit),
         )
     return query(
         "SELECT token, title, url, price, mileage, year, status, reason, "
-        "first_seen, sent_at FROM ads ORDER BY first_seen DESC LIMIT ?",
+        "first_seen, sent_at, detail_json FROM ads ORDER BY first_seen DESC LIMIT ?",
+        (limit,),
+    )
+
+
+def reject_reason_counts(limit: int = 8):
+    """پرتکرارترین دلیل‌های رد شدن، برای نشان دادن در پنل."""
+    return query(
+        "SELECT reason, COUNT(*) AS n FROM ads "
+        "WHERE status = 'rejected' AND reason != '' "
+        "GROUP BY reason ORDER BY n DESC LIMIT ?",
         (limit,),
     )
 
