@@ -29,6 +29,10 @@
         <input type="number" name="daily_cap" min="0" max="100" value="{{ cfg.daily_cap }}">
         <small class="muted">هدف شما: ۱۰ تا ۱۵ آگهی در روز</small>
       </label>
+      <label>سقف گرانی نسبت به میانگین مدل (٪)
+        <input type="number" name="price_vs_market" min="0" max="100" value="{{ cfg.price_vs_market }}">
+        <small class="muted">مثلاً ۱۵ = آگهی‌هایی که بیش از ۱۵٪ از میانگین هم‌مدلشان گران‌ترند نیاید. ۰ = خاموش</small>
+      </label>
       <label>شناسه چت تلگرام
         <input type="text" name="chat_id" value="{{ cfg.chat_id }}">
       </label>
@@ -75,20 +79,20 @@
   </div>
 
   <div class="panel">
-    <h2>استثناها (ترکیب کلمات و جمله‌ها)</h2>
+    <h2>استثناها (واژه‌به‌واژه)</h2>
     <p class="muted">
-      اگر عبارتی که اینجا اضافه می‌کنید در آگهی باشد، آن عبارت پیش از بررسی واژه‌ها نادیده گرفته می‌شود؛
-      مثلاً استثنای «تازه تعمیر» باعث می‌شود آگهی به‌خاطر واژهٔ تعمیر رد نشود.
-      می‌توانید از صفحهٔ «آگهی‌ها» روی هر آگهی رد‌شده هم دکمهٔ استثنا را بزنید.
+      هر استثنا مال یک واژهٔ ممنوعه است: اگر آن عبارت در متن آگهی باشد، آن واژه آگهی را رد نمی‌کند.
+      مثلاً واژهٔ «وانت» با استثنای «مثل وانت» رد نمی‌شود، چون آگهی وانت نیست و فقط معاوضه را گفته.
+      از صفحهٔ «آگهی‌ها» هم روی هر آگهی رد‌شده می‌توانید همین کار را بکنید.
     </p>
     <table class="words">
-      <thead><tr><th>فعال</th><th>عبارت استثنا</th><th>استفاده شده</th><th>حذف</th></tr></thead>
+      <thead><tr><th>فعال</th><th>برای واژه</th><th>عبارت استثنا</th><th>حذف</th></tr></thead>
       <tbody>
       {% for e in exceptions %}
         <tr>
           <td><input type="checkbox" name="exception_{{ e.id }}" {% if e.enabled %}checked{% endif %}></td>
+          <td class="muted">{{ e.word or 'همهٔ واژه‌ها' }}</td>
           <td>{{ e.phrase }}</td>
-          <td class="num">{{ e.hits }}</td>
           <td><input type="checkbox" name="delete_exception_{{ e.id }}"></td>
         </tr>
       {% else %}
@@ -97,8 +101,16 @@
       </tbody>
     </table>
     <div class="grid new-word">
+      <label>واژه
+        <select name="new_exception_word">
+          <option value="">همهٔ واژه‌ها</option>
+          {% for w in all_words %}
+            <option value="{{ w.word }}">{{ w.word }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <label>عبارت تازه
-        <input type="text" name="new_exception" placeholder="مثلاً: تعمیر شده یا بدون شرایط">
+        <input type="text" name="new_exception" placeholder="مثلاً: تازه تعمیر یا مثل وانت">
       </label>
     </div>
   </div>

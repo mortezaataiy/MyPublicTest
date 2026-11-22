@@ -63,6 +63,14 @@ def format_ad(ad: dict) -> str:
     if price:
         lines.append(f"💰 {esc(price)}")
 
+    if ad.get("market_median"):
+        diff = ad.get("market_diff") or 0
+        word = "ارزان‌تر" if diff < 0 else ("گران‌تر" if diff > 0 else "برابر")
+        lines.append(
+            f"📉 {abs(diff)}٪ {word} از میانگین مدل {esc(ad.get('year') or '')} "
+            f"({ad['market_median'] // 1_000_000} میلیون)"
+        )
+
     tags = [f"{k}: {v}" for k, v in assess.items() if v]
     if tags:
         lines.append("🔧 " + " | ".join(tags))

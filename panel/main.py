@@ -144,6 +144,10 @@ def _cfg_from_form(form) -> tuple[dict, dict]:
         values["interval_minutes"] = str(int(form.get("interval_minutes") or 5))
         values["hourly_cap"] = str(int(form.get("hourly_cap") or 0))
         values["daily_cap"] = str(int(form.get("daily_cap") or 0))
+        market = form.get("price_vs_market")
+        values["price_vs_market"] = str(
+            int(market) if market not in (None, "") else int(db.get_setting("price_vs_market", "0") or 0)
+        )
     except (TypeError, ValueError):
         errors.append("همه بازه‌ها باید عدد باشند")
     values["chat_id"] = (form.get("chat_id") or "").strip()
@@ -175,6 +179,7 @@ def _cfg_from_form(form) -> tuple[dict, dict]:
             "interval_minutes",
             "hourly_cap",
             "daily_cap",
+            "price_vs_market",
         }
     }
     typed["allow_front_impact"] = values["allow_front_impact"] == "1"
@@ -194,6 +199,7 @@ def filters_page(request: Request, saved: int = 0, passed: int = 0,
             "words": db.list_words(),
             "exceptions": db.list_exceptions(),
             "reasons": db.reject_reason_counts(8),
+            "all_words": db.list_words(),
             "saved": saved,
             "passed": passed,
             "total": total,
@@ -239,7 +245,7 @@ async def save_filters(request: Request, ok: bool = Depends(require)):
         db.set_exception(eid, bool(form.get(f"exception_{eid}")))
     new_exception = (form.get("new_exception") or "").strip()
     if new_exception:
-        db.add_exception(new_exception)
+        db.add_exception(new_exception, form.get("new_exception_word") or "")
 
     # بررسی تغییر واقعی، برای فرستادن خلاصهٔ فیلترها به تلگرام
     after = {
@@ -308,12 +314,15 @@ def ads_send(token: str = Form(""), ok: bool = Depends(require)):
 
 @app.post("/ads/except")
 def ads_except(
-    token: str = Form(""), phrase: str = Form(""), ok: bool = Depends(require)
+    token: str = Form(""),
+    phrase: str = Form(""),
+    word: str = Form(""),
+    ok: bool = Depends(require),
 ):
-    """افزودن عبارت استثنا از روی یک آگهی رد‌شده و بازبینی دوباره."""
+    """افزودن عبارت استثنا برای همان واژه‌ای که آگهی را رد کرده."""
     phrase = " ".join((phrase or "").split())
     if phrase:
-        db.add_exception(phrase)
+        db.add_exception(phrase, word)
         db.log_settings_change(f"استثنای تازه: {phrase}", {"exception": phrase}, None)
         db.set_settings({"recheck_requested": "1"})
         threading.Thread(target=worker.notify_filters, daemon=True).start()

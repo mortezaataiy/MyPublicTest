@@ -29,6 +29,37 @@ def _numbers(ad) -> dict:
     return {"price": price, "mileage": mileage, "year": year}
 
 
+def _market(ad, cfg) -> str:
+    """اگر آگهی از میانگین هم‌مدل‌هایش گران‌تر از حد مجاز باشد، دلیل رد."""
+    pct = int(cfg.get("price_vs_market") or 0)
+    if pct <= 0:
+        return ""
+    price = ad.get("price")
+    year = ad.get("year")
+    if not price or not year:
+        return ""
+    prices = db.market_prices(year)
+    if len(prices) < 6:
+        return ""
+    median = prices[len(prices) // 2]
+    if price > median * (1 + pct / 100):
+        diff = round((price - median) * 100 / median)
+        return f"قیمت {diff}٪ بالاتر از میانگین مدل {int(year)}"
+    return ""
+
+
+def market_note(row) -> tuple[int | None, int | None]:
+    """میانهٔ قیمت هم‌مدل‌ها و اختلاف درصدی این آگهی با آن (برای پیام)."""
+    price, year = row.get("price"), row.get("year")
+    if not price or not year:
+        return None, None
+    prices = db.market_prices(year)
+    if len(prices) < 6:
+        return None, None
+    median = prices[len(prices) // 2]
+    return median, round((price - median) * 100 / median)
+
+
 def _make_text(row) -> str:
     detail = {}
     try:
@@ -48,6 +79,10 @@ def _make_text(row) -> str:
         ad["price_card"] = f"{row['price']:,} تومان"
     if row.get("mileage"):
         ad["mileage_card"] = f"{row['mileage']:,}"
+    median, diff = market_note(row)
+    ad["market_median"] = median
+    ad["market_diff"] = diff
+    ad["year"] = row.get("year")
     return telegram.format_ad(ad)
 
 
@@ -55,17 +90,23 @@ def filter_summary() -> str:
     """خلاصه خوانا از فیلترهای فعلی، برای فرستادن به تلگرام."""
     cfg = db.typed_settings()
     words = [w["word"] for w in db.list_words() if w["enabled"]]
-    exc = [e["phrase"] for e in db.list_exceptions() if e["enabled"]]
+    exc = [
+        (f"{e['word']}: " if e.get("word") else "") + e["phrase"]
+        for e in db.list_exceptions()
+        if e["enabled"]
+    ]
     lines = [
         "⚙️ <b>فیلترها تغییر کرد</b>",
         "",
         f"💰 قیمت: {cfg['price_min'] // 1_000_000} تا {cfg['price_max'] // 1_000_000} میلیون تومان",
         f"🛣 کارکرد: {cfg['mileage_min'] // 1000} تا {cfg['mileage_max'] // 1000} هزار کیلومتر",
         f"📅 مدل: {cfg['year_min']} تا {cfg['year_max']}",
-        "🔧 شاسی جلو با ضربهٔ جزئی: "
+        "🔧 شاسی ضربه‌خورده: "
         + ("قبول" if cfg.get("allow_front_impact") else "رد"),
         "🚫 واژه‌های ممنوعه: " + ("، ".join(words) if words else "هیچ"),
         "✅ استثناها: " + ("، ".join(exc) if exc else "هیچ"),
+        "📉 سقف گرانی نسبت به میانگین مدل: "
+        + (f"{cfg['price_vs_market']}٪" if cfg.get("price_vs_market") else "خاموش"),
         f"📤 سقف ارسال: {cfg['hourly_cap']} در ساعت، {cfg.get('daily_cap', 0)} در روز",
     ]
     return "\n".join(lines)
@@ -170,7 +211,8 @@ def recheck_rejected() -> tuple[int, int]:
             "mileage_card": "",
             "detail": detail,
         }
-        reason = filters.evaluate(ad, cfg, words, exceptions)
+        ad.update(_numbers(ad))
+        reason = filters.evaluate(ad, cfg, words, exceptions) or _market(ad, cfg)
         if reason is None:
             db.set_ad_status(row["token"], "waiting", "")
             passed += 1
@@ -243,7 +285,7 @@ def run_cycle(trigger: str = "schedule") -> dict:
                 db.save_ad({**ad, "status": "error", "reason": "خواندن صفحه آگهی ناموفق"})
                 continue
             ad.update(_numbers(ad))
-            reason = filters.evaluate(ad, cfg, words, exceptions)
+            reason = filters.evaluate(ad, cfg, words, exceptions) or _market(ad, cfg)
             if reason:
                 rejected += 1
                 word = reason.split("«")[1].split("»")[0] if "«" in reason else ""

@@ -73,27 +73,36 @@ def phrase_pattern(phrase):
     return re.compile("[\\s\u200c\u200e\u200f]*".join(parts))
 
 
-def mask_exceptions(text, phrases):
-    """عبارت‌های استثنا را از متن حذف می‌کند تا واژه‌های ممنوعه داخلشان
-    آگهی را رد نکنند."""
-    out = str(text or "")
-    for phrase in phrases or []:
-        pat = phrase_pattern(phrase)
-        if pat:
-            out = pat.sub(" ", out)
-    return out
+def _excepted(word, text, exceptions):
+    """آیا برای این واژه استثنایی هست که عبارتش در متن آمده؟"""
+    for rule in exceptions or []:
+        if not int(rule.get("enabled", 1) or 0):
+            continue
+        target = (rule.get("word") or "").strip()
+        if target and target != word and target not in word and word not in target:
+            continue
+        pat = phrase_pattern(rule.get("phrase", ""))
+        if pat and pat.search(text):
+            return True
+    return False
 
 
-def bad_reason(text, hard, neg):
-    """واژه ممنوعه‌ای که در متن آمده، وگرنه None."""
+def bad_reason(text, hard, neg, exceptions=None):
+    """واژه ممنوعه‌ای که در متن آمده، وگرنه None.
+
+    هر واژه می‌تواند استثنای خودش را داشته باشد؛ مثلاً واژهٔ «وانت» با استثنای
+    «مثل وانت» رد نمی‌شود.
+    """
     t = str(text or "").translate(FA_DIGITS)
     for word, pat in hard:
-        if pat.search(t):
+        if pat.search(t) and not _excepted(word, t, exceptions):
             return word
     for word, pat in neg:
         for match in pat.finditer(t):
             window = t[max(0, match.start() - 20): match.end() + 20]
             if any(n in window for n in NEGATIONS):
+                continue
+            if _excepted(word, t, exceptions):
                 continue
             return word
     return None
@@ -192,12 +201,9 @@ def evaluate(ad, cfg, words, exceptions=None):
     raw = " ".join(
         [ad.get("title", ""), detail.get("title", ""), detail.get("description", "")]
     ).translate(FA_DIGITS)
-    phrases = [
-        e.get("phrase", "") for e in (exceptions or []) if int(e.get("enabled", 1) or 0)
-    ]
-    text = mask_exceptions(norm_spaces(raw), phrases)
+    text = norm_spaces(raw)
 
-    word = bad_reason(text, hard, neg)
+    word = bad_reason(text, hard, neg, exceptions)
     if word:
         return f"واژه «{word}» در آگهی"
 

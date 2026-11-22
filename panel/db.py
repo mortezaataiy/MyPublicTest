@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS words (
 CREATE TABLE IF NOT EXISTS exceptions (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     phrase     TEXT NOT NULL UNIQUE,
+    word       TEXT NOT NULL DEFAULT '',   -- واژهٔ ممنوعه‌ای که استثنا برایش است
     enabled    INTEGER NOT NULL DEFAULT 1,
     hits       INTEGER NOT NULL DEFAULT 0,
     created_at TEXT DEFAULT ''
@@ -135,9 +136,14 @@ def init_db() -> None:
             conn.executemany(
                 "INSERT OR IGNORE INTO words(word, kind, pattern) VALUES(?, ?, ?)", rows
             )
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(exceptions)")]
+        if "word" not in cols:
+            conn.execute(
+                "ALTER TABLE exceptions ADD COLUMN word TEXT NOT NULL DEFAULT ''"
+            )
         conn.executemany(
-            "INSERT OR IGNORE INTO exceptions(phrase, created_at) VALUES(?, ?)",
-            [(p, now_iso()) for p in DEFAULT_EXCEPTIONS],
+            "INSERT OR IGNORE INTO exceptions(phrase, word, created_at) VALUES(?, ?, ?)",
+            [(phrase, word, now_iso()) for word, phrase in DEFAULT_EXCEPTIONS],
         )
         conn.commit()
 
@@ -155,6 +161,7 @@ INT_KEYS = {
     "interval_minutes",
     "hourly_cap",
     "daily_cap",
+    "price_vs_market",
 }
 
 
@@ -259,14 +266,15 @@ def list_exceptions():
     return query("SELECT * FROM exceptions ORDER BY id")
 
 
-def add_exception(phrase: str) -> None:
+def add_exception(phrase: str, word: str = "") -> None:
     phrase = " ".join((phrase or "").split())
+    word = (word or "").strip()
     if len(phrase) < 2:
         return
     execute(
-        "INSERT INTO exceptions(phrase, created_at) VALUES(?, ?) "
-        "ON CONFLICT(phrase) DO UPDATE SET enabled = 1",
-        (phrase, now_iso()),
+        "INSERT INTO exceptions(phrase, word, created_at) VALUES(?, ?, ?) "
+        "ON CONFLICT(phrase) DO UPDATE SET enabled = 1, word = excluded.word",
+        (phrase, word, now_iso()),
     )
 
 
@@ -346,6 +354,18 @@ def ads_page(status: str = "", limit: int = 200):
         "first_seen, sent_at, detail_json FROM ads ORDER BY first_seen DESC LIMIT ?",
         (limit,),
     )
+
+
+def market_prices(year, span: int = 1):
+    """قیمت آگهی‌های هم‌مدل (سال ±span)، برای سنجش «قیمت مناسب»."""
+    if not year:
+        return []
+    rows = query(
+        "SELECT price FROM ads WHERE price IS NOT NULL AND price > 0 "
+        "AND year BETWEEN ? AND ?",
+        (int(year) - span, int(year) + span),
+    )
+    return sorted(r["price"] for r in rows)
 
 
 def reject_reason_counts(limit: int = 8):

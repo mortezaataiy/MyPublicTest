@@ -45,9 +45,11 @@
           </form>
         {% endif %}
         {% if r.status == 'rejected' %}
+          {% set mw = r.reason.split('«')[1].split('»')[0] if '«' in (r.reason or '') else '' %}
           <form method="post" action="/ads/except" class="inline">
             <input type="hidden" name="token" value="{{ r.token }}">
-            <input type="text" name="phrase" placeholder="عبارت استثنا" size="12">
+            <input type="hidden" name="word" value="{{ mw }}">
+            <input type="text" name="phrase" placeholder="استثنا برای {{ mw or 'همه' }}" size="14">
             <button type="submit" class="btn small secondary">استثنا</button>
           </form>
         {% endif %}
