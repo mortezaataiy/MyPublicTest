@@ -25,6 +25,10 @@
         <input type="number" name="hourly_cap" min="0" max="50" value="{{ cfg.hourly_cap }}">
         <small class="muted">۰ = بی‌نهایت</small>
       </label>
+      <label>سقف ارسال در روز
+        <input type="number" name="daily_cap" min="0" max="100" value="{{ cfg.daily_cap }}">
+        <small class="muted">هدف شما: ۱۰ تا ۱۵ آگهی در روز</small>
+      </label>
       <label>شناسه چت تلگرام
         <input type="text" name="chat_id" value="{{ cfg.chat_id }}">
       </label>

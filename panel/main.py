@@ -27,6 +27,7 @@ FORM_KEYS = [
     "fetch_back_hours",
     "interval_minutes",
     "hourly_cap",
+    "daily_cap",
     "chat_id",
 ]
 
@@ -142,6 +143,7 @@ def _cfg_from_form(form) -> tuple[dict, dict]:
         values["fetch_back_hours"] = str(int(form.get("fetch_back_hours") or 36))
         values["interval_minutes"] = str(int(form.get("interval_minutes") or 5))
         values["hourly_cap"] = str(int(form.get("hourly_cap") or 0))
+        values["daily_cap"] = str(int(form.get("daily_cap") or 0))
     except (TypeError, ValueError):
         errors.append("همه بازه‌ها باید عدد باشند")
     values["chat_id"] = (form.get("chat_id") or "").strip()
@@ -172,6 +174,7 @@ def _cfg_from_form(form) -> tuple[dict, dict]:
             "fetch_back_hours",
             "interval_minutes",
             "hourly_cap",
+            "daily_cap",
         }
     }
     typed["allow_front_impact"] = values["allow_front_impact"] == "1"
@@ -203,6 +206,11 @@ def filters_page(request: Request, saved: int = 0, passed: int = 0,
 @app.post("/filters")
 async def save_filters(request: Request, ok: bool = Depends(require)):
     form = await request.form()
+    before = {
+        "cfg": db.typed_settings(),
+        "words": [(w["word"], w["kind"], w["enabled"]) for w in db.list_words()],
+        "exceptions": [(e["phrase"], e["enabled"]) for e in db.list_exceptions()],
+    }
     values, extra = _cfg_from_form(form)
     if extra["errors"]:
         return RedirectResponse("/filters?error=1", status_code=303)
@@ -233,6 +241,14 @@ async def save_filters(request: Request, ok: bool = Depends(require)):
     if new_exception:
         db.add_exception(new_exception)
 
+    # بررسی تغییر واقعی، برای فرستادن خلاصهٔ فیلترها به تلگرام
+    after = {
+        "cfg": db.typed_settings(),
+        "words": [(w["word"], w["kind"], w["enabled"]) for w in db.list_words()],
+        "exceptions": [(e["phrase"], e["enabled"]) for e in db.list_exceptions()],
+    }
+    changed = after != before
+
     # پیش‌نمایش با تنظیمات تازه، روی آگهی‌های اخیرِ ذخیره‌شده (بدون تماس با دیوار)
     words = db.list_words()
     result = filters.preview(
@@ -243,6 +259,8 @@ async def save_filters(request: Request, ok: bool = Depends(require)):
         "ویرایش فیلترها از پنل", values, result["passed"]
     )
     db.set_settings({"recheck_requested": "1"})
+    if changed:
+        threading.Thread(target=worker.notify_filters, daemon=True).start()
     return RedirectResponse(
         f"/filters?saved=1&passed={result['passed']}&total={result['total']}",
         status_code=303,

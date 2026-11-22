@@ -154,6 +154,7 @@ INT_KEYS = {
     "fetch_back_hours",
     "interval_minutes",
     "hourly_cap",
+    "daily_cap",
 }
 
 
@@ -386,6 +387,21 @@ def recent_for_recheck(days: int = 7):
         "AND status IN ('rejected', 'error', 'waiting')",
         (since,),
     )
+
+
+def expire_waiting_older_than(hours: int = 48) -> int:
+    """آگهی‌هایی که زیادی در صف ماندند و دیگر تازه نیستند را کنار می‌گذارد."""
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(
+        timespec="seconds"
+    )
+    with connect() as conn:
+        cur = conn.execute(
+            "UPDATE ads SET status = 'rejected', reason = ? "
+            "WHERE status = 'waiting' AND first_seen < ?",
+            (f"از صف خارج شد (بیشتر از {hours} ساعت در انتظار ماند)", since),
+        )
+        conn.commit()
+        return cur.rowcount
 
 
 def ads_with_details(days: int = 7):

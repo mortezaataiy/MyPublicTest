@@ -59,8 +59,9 @@ def format_ad(ad: dict) -> str:
     if meta:
         lines.append(" · ".join(meta))
 
-    if ad.get("price_card"):
-        lines.append(f"💰 {esc(ad['price_card'])}")
+    price = ad.get("price_card") or specs.get("قیمت پایه")
+    if price:
+        lines.append(f"💰 {esc(price)}")
 
     tags = [f"{k}: {v}" for k, v in assess.items() if v]
     if tags:

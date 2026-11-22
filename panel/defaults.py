@@ -83,7 +83,8 @@ DEFAULT_SETTINGS = {
     # رفتار ربات
     "enabled": "1",
     "interval_minutes": "5",
-    "hourly_cap": "5",
+    "hourly_cap": "3",
+    "daily_cap": "15",
     "chat_id": "434494190",
     # وضعیت داخلی (از پنل ویرایش نمی‌شود)
     "last_tick": "",

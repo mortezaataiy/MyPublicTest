@@ -16,6 +16,19 @@ _thread = None
 
 
 # ---------------------------------------------------------------- ارسال
+def _numbers(ad) -> dict:
+    """قیمت/کارکرد/مدل را یک‌جا از کارت و مشخصات آگهی درمی‌آورد تا هم در
+    پیام تلگرام و هم در پنل نمایش داده شود."""
+    detail = ad.get("detail") or {}
+    specs = detail.get("specs") or {}
+    price = filters.to_num(ad.get("price_card")) or filters.to_num(
+        specs.get("قیمت پایه", "")
+    )
+    mileage = filters.mileage_of(specs, ad.get("mileage_card"))
+    year = filters.year_of(specs, ad.get("title") or detail.get("title") or "")
+    return {"price": price, "mileage": mileage, "year": year}
+
+
 def _make_text(row) -> str:
     detail = {}
     try:
@@ -30,10 +43,44 @@ def _make_text(row) -> str:
         "where": "",
         "detail": detail,
     }
-    # قیمت روی کارت را از دیتابیس بازسازی می‌کنیم
+    # قیمت/کارکرد/مدل را از دیتابیس بازسازی می‌کنیم
     if row.get("price"):
         ad["price_card"] = f"{row['price']:,} تومان"
+    if row.get("mileage"):
+        ad["mileage_card"] = f"{row['mileage']:,}"
     return telegram.format_ad(ad)
+
+
+def filter_summary() -> str:
+    """خلاصه خوانا از فیلترهای فعلی، برای فرستادن به تلگرام."""
+    cfg = db.typed_settings()
+    words = [w["word"] for w in db.list_words() if w["enabled"]]
+    exc = [e["phrase"] for e in db.list_exceptions() if e["enabled"]]
+    lines = [
+        "⚙️ <b>فیلترها تغییر کرد</b>",
+        "",
+        f"💰 قیمت: {cfg['price_min'] // 1_000_000} تا {cfg['price_max'] // 1_000_000} میلیون تومان",
+        f"🛣 کارکرد: {cfg['mileage_min'] // 1000} تا {cfg['mileage_max'] // 1000} هزار کیلومتر",
+        f"📅 مدل: {cfg['year_min']} تا {cfg['year_max']}",
+        "🔧 شاسی جلو با ضربهٔ جزئی: "
+        + ("قبول" if cfg.get("allow_front_impact") else "رد"),
+        "🚫 واژه‌های ممنوعه: " + ("، ".join(words) if words else "هیچ"),
+        "✅ استثناها: " + ("، ".join(exc) if exc else "هیچ"),
+        f"📤 سقف ارسال: {cfg['hourly_cap']} در ساعت، {cfg.get('daily_cap', 0)} در روز",
+    ]
+    return "\n".join(lines)
+
+
+def notify_filters() -> bool:
+    """خلاصهٔ فیلترهای تازه را به تلگرام می‌فرستد."""
+    chat = db.typed_settings().get("chat_id")
+    if not chat or not telegram.token():
+        return False
+    try:
+        telegram.send_message(chat, filter_summary())
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def send_one_now(token: str) -> bool:
@@ -80,6 +127,11 @@ def send_waiting(chat_id: str, cap: int) -> int:
             return 0
     else:
         room = 1000
+    daily = int(db.typed_settings().get("daily_cap") or 0)
+    if daily > 0:
+        room = min(room, daily - db.sent_today())
+        if room <= 0:
+            return 0
     rows = db.query(
         "SELECT * FROM ads WHERE status = 'waiting' ORDER BY first_seen ASC LIMIT ?",
         (max(1, room),),
@@ -152,6 +204,11 @@ def run_cycle(trigger: str = "schedule") -> dict:
         if can_send:
             sent += flush_pending(chat)
 
+        # ۱.۵) آگهی‌های کهنهٔ صف، تا صف بی‌نهایت بزرگ نشود
+        expired = db.expire_waiting_older_than(int(cfg.get("fetch_back_hours") or 36))
+        if expired:
+            notes.append(f"{expired} آگهی کهنه از صف خارج شد")
+
         # ۲) بررسی مجدد درخواستی
         if db.get_setting("recheck_requested") == "1":
             p, t = recheck_rejected()
@@ -185,6 +242,7 @@ def run_cycle(trigger: str = "schedule") -> dict:
                 notes.append(f"صفحه آگهی خوانده نشد: {str(exc)[:80]}")
                 db.save_ad({**ad, "status": "error", "reason": "خواندن صفحه آگهی ناموفق"})
                 continue
+            ad.update(_numbers(ad))
             reason = filters.evaluate(ad, cfg, words, exceptions)
             if reason:
                 rejected += 1
