@@ -316,6 +316,7 @@ def ads_except(
         db.add_exception(phrase)
         db.log_settings_change(f"استثنای تازه: {phrase}", {"exception": phrase}, None)
         db.set_settings({"recheck_requested": "1"})
+        threading.Thread(target=worker.notify_filters, daemon=True).start()
         threading.Thread(
             target=worker.run_cycle, kwargs={"trigger": "manual"}, daemon=True
         ).start()
