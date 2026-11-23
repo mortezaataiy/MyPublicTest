@@ -133,8 +133,13 @@ def filter_summary() -> str:
         "✅ استثناها: " + ("، ".join(exc) if exc else "هیچ"),
         "📉 سقف گرانی نسبت به میانگین مدل: "
         + (f"{cfg['price_vs_market']}٪" if cfg.get("price_vs_market") else "خاموش"),
-        f"📤 سقف ارسال: {cfg['hourly_cap']} در ساعت، {cfg.get('daily_cap', 0)} در روز"
-        f" (پخش‌شده بین ساعت {cfg.get('send_from_hour', 8)} تا {cfg.get('send_to_hour', 23)})",
+        "📤 ارسال: "
+        + (
+            f"سقف {cfg['hourly_cap']} در ساعت، {cfg.get('daily_cap', 0)} در روز"
+            f" (پخش‌شده بین ساعت {cfg.get('send_from_hour', 8)} تا {cfg.get('send_to_hour', 23)})"
+            if int(cfg.get("daily_cap") or 0) > 0
+            else "در لحظه و بدون سقف و بدون صف"
+        ),
     ]
     return "\n".join(lines)
 
