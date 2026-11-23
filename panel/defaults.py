@@ -88,7 +88,7 @@ DEFAULT_SETTINGS = {
     "year_min": "1385",
     "year_max": "1425",
     "max_pages": "4",
-    "fetch_back_hours": "36",
+    "fetch_back_hours": "48",
     "allow_front_impact": "0",  # شاسی ضربه‌خورده قبول نیست
     "price_vs_market": "15",  # رد کردن آگهی‌هایی که بیش از این درصد از میانگین مدل گران‌ترند
     # رفتار ربات
@@ -96,6 +96,8 @@ DEFAULT_SETTINGS = {
     "interval_minutes": "5",
     "hourly_cap": "3",
     "daily_cap": "15",
+    "send_from_hour": "8",   # پخش ارسال‌ها از ساعت ۸ صبح به وقت ایران
+    "send_to_hour": "23",    # تا ساعت ۱۱ شب
     "chat_id": "434494190",
     # وضعیت داخلی (از پنل ویرایش نمی‌شود)
     "last_tick": "",

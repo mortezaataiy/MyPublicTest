@@ -7,6 +7,7 @@ import json
 import threading
 import time
 import traceback
+from datetime import datetime, timedelta, timezone
 
 from . import db, divar, filters, telegram
 
@@ -14,8 +15,33 @@ _lock = threading.Lock()
 _stop = threading.Event()
 _thread = None
 
+LOCAL_TZ = timezone(timedelta(minutes=210))  # ساعت ایران (UTC+3:30)
+
 
 # ---------------------------------------------------------------- ارسال
+def send_quota(cfg: dict) -> int:
+    """سهمیه‌ای از سقف روزانه که تا این ساعت از روز مجاز است.
+
+    بدون این سهمیه، همهٔ آگهی‌های صف در اولین ساعات روز یک‌جا فرستاده می‌شدند
+    و بعد تا نیمه‌شب سکوت می‌شد؛ حالا سقف روزانه در طول ساعت‌های بیداری پخش می‌شود.
+    """
+    daily = int(cfg.get("daily_cap") or 0)
+    if daily <= 0:
+        return 1000
+    start = int(cfg.get("send_from_hour") or 0)
+    end = int(cfg.get("send_to_hour") or 0)
+    if end <= start:
+        return daily
+    now = datetime.now(LOCAL_TZ)
+    hour = now.hour + now.minute / 60
+    if hour < start:
+        return 0
+    if hour >= end:
+        return daily
+    elapsed = int((hour - start) * 60)
+    return max(1, -(-daily * elapsed // ((end - start) * 60)))
+
+
 def _numbers(ad) -> dict:
     """قیمت/کارکرد/مدل را یک‌جا از کارت و مشخصات آگهی درمی‌آورد تا هم در
     پیام تلگرام و هم در پنل نمایش داده شود."""
@@ -107,7 +133,8 @@ def filter_summary() -> str:
         "✅ استثناها: " + ("، ".join(exc) if exc else "هیچ"),
         "📉 سقف گرانی نسبت به میانگین مدل: "
         + (f"{cfg['price_vs_market']}٪" if cfg.get("price_vs_market") else "خاموش"),
-        f"📤 سقف ارسال: {cfg['hourly_cap']} در ساعت، {cfg.get('daily_cap', 0)} در روز",
+        f"📤 سقف ارسال: {cfg['hourly_cap']} در ساعت، {cfg.get('daily_cap', 0)} در روز"
+        f" (پخش‌شده بین ساعت {cfg.get('send_from_hour', 8)} تا {cfg.get('send_to_hour', 23)})",
     ]
     return "\n".join(lines)
 
@@ -168,9 +195,10 @@ def send_waiting(chat_id: str, cap: int) -> int:
             return 0
     else:
         room = 1000
-    daily = int(db.typed_settings().get("daily_cap") or 0)
+    cfg = db.typed_settings()
+    daily = int(cfg.get("daily_cap") or 0)
     if daily > 0:
-        room = min(room, daily - db.sent_today())
+        room = min(room, send_quota(cfg) - db.sent_today_local())
         if room <= 0:
             return 0
     rows = db.query(

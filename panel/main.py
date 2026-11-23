@@ -118,7 +118,7 @@ def dashboard(request: Request, ok: bool = Depends(require)):
         "auth_ok": True,
         "cfg": cfg,
         "counts": db.status_counts(),
-        "sent_today": db.sent_today(),
+        "sent_today": db.sent_today_local(),
         "sent_hour": db.sent_last_hour(),
         "pending": len(db.pending_list()),
         "runs": db.recent_runs(8),

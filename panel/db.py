@@ -13,6 +13,7 @@ from .defaults import DEFAULT_EXCEPTIONS, DEFAULT_SETTINGS, HARD_BAD, NEGATABLE_
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("DIVAR_DATA_DIR", str(BASE_DIR / "data")))
 DB_PATH = DATA_DIR / "divar.db"
+LOCAL_TZ = timezone(timedelta(minutes=210))  # ساعت ایران (UTC+3:30)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -161,6 +162,8 @@ INT_KEYS = {
     "interval_minutes",
     "hourly_cap",
     "daily_cap",
+    "send_from_hour",
+    "send_to_hour",
     "price_vs_market",
 }
 
@@ -388,6 +391,16 @@ def sent_today() -> int:
     row = query_one(
         "SELECT COUNT(*) AS n FROM ads WHERE status = 'sent' AND sent_at >= ?",
         (start.isoformat(timespec="seconds"),),
+    )
+    return row["n"] if row else 0
+
+
+def sent_today_local() -> int:
+    """تعداد ارسال‌های امروز به وقت ایران (سقف روزانه از نیمه‌شب محلی صفر می‌شود)."""
+    start_local = datetime.now(LOCAL_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = start_local.astimezone(timezone.utc).isoformat(timespec="seconds")
+    row = query_one(
+        "SELECT COUNT(*) AS n FROM ads WHERE status = 'sent' AND sent_at >= ?", (start,)
     )
     return row["n"] if row else 0
 
